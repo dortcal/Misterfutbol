@@ -6,7 +6,7 @@
   const UI = { act: {}, keys: null };
   const esc = U.esc;
 
-  UI.settings = Object.assign({ duration: 4, difficulty: 1, zoom: 1, weather: 'dia', autoSubs: true }, U.store.get('mf27_settings', {}));
+  UI.settings = Object.assign({ duration: 4, difficulty: 1, zoom: 1, camera: 'total', weather: 'dia', autoSubs: true }, U.store.get('mf27_settings', {}));
   UI.saveSettings = () => U.store.set('mf27_settings', UI.settings);
 
   // ---------- infraestructura de pantallas
@@ -141,7 +141,7 @@
       '<div style="margin-top:8px"><h3>Narración por voz</h3>' + seg('voice', A.voiceOn ? 1 : 0, [[1, 'Sí'], [0, 'No']]) + '<p class="muted">Usa la voz en español de tu dispositivo para cantar los goles.</p></div></div>' +
       '<div><h3>Duración del partido</h3>' + seg('duration', s.duration, [[2, '2 min'], [4, '4 min'], [6, '6 min'], [10, '10 min']]) +
       '<h3 style="margin-top:12px">Dificultad (modo Jugar)</h3>' + seg('difficulty', s.difficulty, [[0.9, 'Fácil'], [1, 'Normal'], [1.08, 'Difícil']]) +
-      '<h3 style="margin-top:12px">Cámara</h3>' + seg('zoom', s.zoom, [[1.3, 'Cerca'], [1, 'Normal'], [0.75, 'Lejos']]) +
+      '<h3 style="margin-top:12px">Cámara</h3>' + seg('cam', (s.camera || 'total') === 'total' ? 'total' : s.zoom, [['total', 'Total (campo entero)'], [1.3, 'Seguimiento cerca'], [1, 'Seguimiento']]) +
       '<h3 style="margin-top:12px">Cambios automáticos en tu equipo</h3>' + seg('autoSubs', s.autoSubs ? 1 : 0, [[1, 'Sí'], [0, 'No']]) + '</div>' +
       '</div><div class="panel"><h3>Datos guardados</h3><p class="muted" style="margin-top:0">Las partidas se guardan en este navegador. Puedes exportarlas desde Liga Manager.</p><button class="btn warn" data-act="wipe">Borrar todas las partidas y ajustes</button></div></div>',
       {
@@ -149,6 +149,7 @@
           const k = el.dataset.k, v = el.dataset.v;
           if (k === 'voice') { A.voiceOn = v === '1'; U.store.set('mf27_voice', A.voiceOn); }
           else if (k === 'autoSubs') s.autoSubs = v === '1';
+          else if (k === 'cam') { if (v === 'total') s.camera = 'total'; else { s.camera = 'follow'; s.zoom = parseFloat(v); } }
           else s[k] = parseFloat(v);
           UI.saveSettings(); UI.options();
         },
@@ -166,7 +167,7 @@
     UI.show(UI.head('Cómo se juega', null, 'menu') + '<div class="wrap">' +
       '<div class="grid2"><div class="panel"><h2>Partido amistoso</h2><p>Elige local y visitante entre los 42 equipos de Primera y Segunda 2026/27 y decide cómo vivir el partido:</p>' +
       '<p><b>JUGAR</b>: controlas al jugador marcado con el aro amarillo. <b>VISIONADO</b>: ves el partido con cámara cenital y puedes acelerar, pausar o hacer cambios. <b>RESULTADO</b>: el marcador final al instante con el teletipo del partido.</p></div>' +
-      '<div class="panel"><h2>Controles</h2><div class="kv"><b>Mover</b><span>Flechas o WASD · joystick táctil</span><b>Pase</b><span>X o J · botón verde (mantén para pase largo)</span><b>Tiro</b><span>Z, K o Espacio · botón rojo (mantén para más potencia; apunta con la dirección)</span><b>Sin balón</b><span>Pase = entrada · Tiro = cambiar de jugador</span><b>Pausa</b><span>P o Esc</span></div></div>' +
+      '<div class="panel"><h2>Controles</h2><p style="margin-top:0">Un solo botón, como en los clásicos: <b>Espacio</b> (también X, Z, J o K) o el botón naranja en pantalla táctil.</p><div class="kv"><b>Mover</b><span>Flechas o WASD · joystick. El jugador sigue corriendo en la última dirección.</span><b>Pase</b><span>Toque corto. El compañero recibe mejor cuanto mejor pasas tú y mejor controla él.</span><b>Tiro</b><span>Mantén pulsado: cuanto más tiempo, más potencia. Apunta con la dirección.</span><b>Efecto</b><span>Justo después de tirar, pulsa hacia un lado para curvar el balón.</span><b>Sin balón</b><span>Toque = entrada (o cambio de jugador si estás lejos) · mantener = segada más larga</span><b>Pausa</b><span>P o Esc</span></div></div>' +
       '<div class="panel"><h2>Liga Manager</h2><p>Dirige a un club de Primera o Segunda: alineación y táctica, fichajes, entrenamiento, finanzas y cantera. Cumple el objetivo de la directiva o te destituirán.</p>' +
       '<p>Al final de la temporada descienden los 3 últimos de Primera. En Segunda suben los 2 primeros y el ganador del playoff a doble partido entre el 3º y el 6º (en caso de empate global pasa el mejor clasificado). Los 4 últimos de Segunda bajan a Primera RFEF.</p></div>' +
       '<div class="panel"><h2>Medias y datos</h2><p>Las medias de los jugadores son una estimación basada en su nivel y rendimiento reciente. Los equipos más potentes tienen mejores jugadores. Las plantillas proceden de las listas públicas de los clubes en octubre de 2026.</p><p class="muted">VEL velocidad · RES resistencia · AGR agresividad · CAL calidad · PAS pase · TIR tiro · REG regate · DEF defensa · POR portería.</p></div></div></div>',

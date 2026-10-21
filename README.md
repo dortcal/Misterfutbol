@@ -8,7 +8,6 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Jugar**: controlas a tu equipo (teclado o mandos táctiles).
   - **Visionado**: ves el partido simulado en tiempo real (x1, x2 o x4), con cambios y táctica durante el partido.
   - **Resultado**: marcador final al instante con el teletipo del partido.
-- **Sorteo inicial** (Jugar y Visionado): pide cara o cruz; quien gana elige sacar de centro o escoger campo y el rival se queda con la otra opción. En la segunda parte saca el otro equipo y se cambia de campo. En Jugar, tu saque de centro no se pone en juego hasta que pulsas PASE.
 - **Liga Manager**: dirige a un club durante varias temporadas.
   - Alineación (6 sistemas), estilo, presión y tipo de pase.
   - Plantilla, fichajes (ventanas de verano e invierno), ofertas recibidas, venta de jugadores.
@@ -19,14 +18,19 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - Temporadas sucesivas: los jugadores envejecen, progresan o declinan y se retiran; se generan canteranos.
   - Guardado automático en el navegador (3 ranuras) y exportación/importación de partidas.
 
-## Controles
+## Controles (un solo botón, al estilo PC Fútbol 2.0)
 
 | Acción | Teclado | Táctil |
 |---|---|---|
-| Mover | Flechas o WASD | Joystick |
-| Pase (mantén = pase largo) / entrada sin balón | X o J | Botón PASE |
-| Tiro (mantén = potencia; apunta con la dirección) / cambiar de jugador sin balón | Z, K o Espacio | Botón TIRO |
+| Mover (el jugador sigue corriendo en la última dirección) | Flechas o WASD | Joystick |
+| Pase (toque corto) | Espacio, X, Z, J o K | Botón naranja |
+| Tiro (mantener: más tiempo = más potencia) | Mantener el botón | Mantener el botón |
+| Efecto en el tiro | Justo después de tirar, pulsa hacia un lado | Joystick hacia un lado |
+| Sin balón: entrada (toque) o cambio de jugador si estás lejos | Toque | Toque |
+| Sin balón: segada más larga | Mantener el botón | Mantener el botón |
 | Pausa | P o Esc | Botón ❚❚ |
+
+El receptor de un pase tiene un "imán": el balón se curva hacia sus pies y lo controla mejor cuanto mejor pasa quien lo envía y mejor controla quien lo recibe. La cámara muestra **todo el campo desde arriba** y no se mueve (en Opciones puedes elegir una cámara de seguimiento).
 
 ## Publicarlo en GitHub Pages
 

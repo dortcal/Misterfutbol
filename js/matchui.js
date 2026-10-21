@@ -53,7 +53,7 @@
     UI.show(UI.head(cfg.label || 'Partido amistoso', esc(th.stadium) + ' · ' + clima, cfg.manager ? null : 'back') + '<div class="wrap">' +
       '<div class="panel vs-card"><div>' + GFX.badgeImg(th, 72) + '<div class="tn">' + esc(th.name) + '</div><img src="' + GFX.shirt(cfg.kits[0], 64) + '" width="40" height="40" alt=""></div><div class="vs">VS</div><div>' + GFX.badgeImg(ta, 72) + '<div class="tn">' + esc(ta.name) + '</div><img src="' + GFX.shirt(cfg.kits[1], 64) + '" width="40" height="40" alt=""></div></div>' +
       '<div class="grid2"><div class="panel"><h3>' + esc(th.short) + ' · ' + cfg.lhome.formation + '</h3><div class="grid2" style="gap:2px 10px;font-size:15px">' + xi(cfg.lhome) + '</div></div><div class="panel"><h3>' + esc(ta.short) + ' · ' + cfg.laway.formation + '</h3><div class="grid2" style="gap:2px 10px;font-size:15px">' + xi(cfg.laway) + '</div></div></div>' +
-      (cfg.human >= 0 ? '<div class="panel"><b>Controles:</b> flechas/WASD para moverte · X pase (mantén = largo) · Z o Espacio tiro (mantén = potencia) · sin balón: X entrada, Z cambio de jugador · P pausa. En pantalla táctil usa el joystick y los botones.</div>' : '') +
+      (cfg.human >= 0 ? '<div class="panel"><b>Controles (un solo botón):</b> flechas o WASD para moverte; el jugador sigue corriendo en la última dirección. <b>Espacio</b> (o X/Z): toque corto = pase, mantener = tiro (más tiempo, más potencia). Justo después de tirar, pulsa hacia un lado para dar efecto al balón. Sin balón: toque = entrada o cambio de jugador, mantener = segada más larga. P = pausa. En pantalla táctil: joystick y botón de acción.</div>' : '') +
       '<button class="bar gold" data-act="go" data-key="Enter" autofocus><span class="n">▶</span><span class="t">' + (cfg.human >= 0 ? 'Saltar al campo' : 'Comenzar el partido') + '</span></button></div>',
       { go: () => MUI.toss(cfg), back: () => cfg.onExit && cfg.onExit() });
   };
@@ -123,8 +123,8 @@
     app.innerHTML = '<div class="match' + (touch ? ' has-touch' : '') + '"><canvas class="field" aria-label="Campo de fútbol, vista cenital"></canvas>' +
       '<div class="hud-top"><div class="score" aria-live="polite"><span class="chip" style="background:' + cfg.kits[0].p + '"></span><span class="tm">' + esc(th.abbr) + '</span><span class="g" id="g0">0</span><span class="g" id="g1">0</span><span class="tm">' + esc(ta.abbr) + '</span><span class="chip" style="background:' + cfg.kits[1].p + '"></span><span class="clock" id="clk">00\'</span></div>' +
       '<div class="hud-btns">' + (cfg.human < 0 ? '<button class="hbtn" id="spd" aria-label="Velocidad">x1</button>' : '') + '<button class="hbtn" id="snd" aria-label="Sonido">' + (A.on ? '♪' : '✕') + '</button><button class="hbtn" id="pau" aria-label="Pausa">❚❚</button></div></div>' +
-      '<canvas class="radar" width="' + (110) + '" height="' + (72) + '"></canvas><div class="ticker" id="tick" hidden></div><div class="banner" id="ban"></div>' +
-      (touch ? '<div class="touch"><div class="joy" id="joy"><div class="knob"></div></div><div class="abtn pass" id="bp">PASE</div><div class="abtn shoot" id="bs">TIRO</div><div class="power" id="pow" hidden><i></i></div></div>' : (cfg.human >= 0 ? '<div class="keys-help">Flechas mover · X pase · Z/Espacio tiro · P pausa</div>' : '')) +
+      ((S.camera || 'total') === 'total' ? '' : '<canvas class="radar" width="110" height="72"></canvas>') + '<div class="ticker" id="tick" hidden></div><div class="banner" id="ban"></div>' +
+      (touch ? '<div class="touch"><div class="joy" id="joy"><div class="knob"></div></div><div class="abtn shoot act" id="ba">PASE<br>TIRO</div><div class="power" id="pow" hidden><i></i></div></div>' : (cfg.human >= 0 ? '<div class="keys-help">Flechas mover · ESPACIO: toque = pase, mantener = tiro / segada · tras tirar, dirección = efecto · P pausa</div><div class="power" id="pow" hidden><i></i></div>' : '')) +
       '<div id="ovl"></div></div>';
     const root = app.querySelector('.match');
     const canvas = root.querySelector('canvas.field'); const radar = root.querySelector('canvas.radar');
@@ -135,7 +135,7 @@
       manualSubs: cfg.userSide !== undefined && !S.autoSubs ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
     });
     MUI.m = m; MUI.R = null;
-    const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather }); MUI.R = R;
+    const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather, camera: S.camera || 'total', touch }); MUI.R = R;
     if (radar && R.rot) { radar.width = 72; radar.height = 110; }
     let speed = 1, paused = false, ended = false, last = performance.now(), acc = 0, raf = 0, frame = 0, tickT = 0, banT = 0;
     const ban = root.querySelector('#ban'); const tick = root.querySelector('#tick');
@@ -165,9 +165,9 @@
     // ---- entrada (teclado y táctil)
     const keys = {}; let scr = [0, 0];
     const I = m.input;
-    const press = (k, down) => {
-      if (k === 'pass') { if (down) { if (!I._pd) { I._pd = performance.now(); } } else if (I._pd) { I.passRel = true; I.passHeldT = (performance.now() - I._pd) / 1000; I._pd = 0; } }
-      if (k === 'shoot') { if (down) { if (!I._sd) I._sd = performance.now(); } else if (I._sd) { I.shootRel = true; I.shootHeldT = (performance.now() - I._sd) / 1000; I._sd = 0; } }
+    const press = (k, down) => { // un único botón de acción
+      if (down) { if (!I._bd) I._bd = performance.now(); }
+      else if (I._bd) { I.btnRel = true; I.btnHeldT = (performance.now() - I._bd) / 1000; I._bd = 0; }
     };
     const onKey = (e, down) => {
       const k = e.key.toLowerCase();
@@ -175,8 +175,7 @@
       if (down && (k === 'p' || k === 'escape')) { togglePause(); return; }
       if (paused) return;
       keys[k] = down;
-      if (k === 'x' || k === 'j') press('pass', down);
-      if (k === 'z' || k === 'k' || k === ' ') press('shoot', down);
+      if (['x', 'j', 'z', 'k', ' ', 'enter'].indexOf(k) >= 0 && !e.repeat) press('btn', down);
       const x = (keys.arrowright || keys.d ? 1 : 0) - (keys.arrowleft || keys.a ? 1 : 0);
       const y = (keys.arrowdown || keys.s ? 1 : 0) - (keys.arrowup || keys.w ? 1 : 0);
       if (!touch || x || y) scr = [x, y];
@@ -197,7 +196,7 @@
       joy.addEventListener('pointermove', (e) => { if (e.pointerId === jid) jmove(e); });
       const jend = (e) => { if (e.pointerId === jid) { jid = null; scr = [0, 0]; knob.style.transform = ''; } };
       joy.addEventListener('pointerup', jend); joy.addEventListener('pointercancel', jend);
-      [['#bp', 'pass'], ['#bs', 'shoot']].forEach(([sel, k]) => {
+      [['#ba', 'btn']].forEach(([sel, k]) => {
         const b = root.querySelector(sel);
         b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('down'); press(k, true); });
         const up = () => { b.classList.remove('down'); press(k, false); };
@@ -303,7 +302,9 @@
           const v = R.screenVecToWorld(scr[0], scr[1]);
           I.mx = v[0]; I.my = v[1];
           const pow = root.querySelector('#pow');
-          if (pow) { if (I._sd) { pow.hidden = false; pow.firstChild.style.width = Math.min(100, (performance.now() - I._sd) / 6) + '%'; } else pow.hidden = true; }
+          // barra de potencia: aparece al mantener el botón (tiro o segada)
+          const held = I._bd ? (performance.now() - I._bd) / 1000 : 0;
+          if (pow) { if (held > 0.22) { pow.hidden = false; pow.firstChild.style.width = Math.min(100, (held - 0.22) / 0.55 * 100) + '%'; } else pow.hidden = true; }
         }
         acc += dt * speed;
         let n = 0;
@@ -317,12 +318,13 @@
         root.querySelector('#clk').textContent = U.pad2(Math.min(m.dispMinute(), 99)) + '\'';
         if (radar) R.drawRadar(radar);
       }
-      if (m.waitingHuman && m.phaseT <= 0) { tick.textContent = touch ? 'Pulsa PASE para sacar de centro' : 'Pulsa X (pase) para sacar de centro'; tick.hidden = false; tickT = 0.3; }
+      if (m.waitingHuman && m.phaseT <= 0) { tick.textContent = touch ? 'Pulsa el botón para sacar de centro' : 'Pulsa ESPACIO para sacar de centro'; tick.hidden = false; tickT = 0.3; }
       if (tickT > 0) { tickT -= dt; if (tickT <= 0) tick.hidden = true; }
       if (banT > 0) { banT -= dt; if (banT <= 0) ban.innerHTML = ''; }
     }
     raf = requestAnimationFrame(loop);
     A.sfxPlay('whistle', 1);
+    setTimeout(() => { const kh = root.querySelector('.keys-help'); if (kh) kh.remove(); }, 8000);
   };
 
   // ---------- resumen final

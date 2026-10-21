@@ -20,7 +20,7 @@
   function Renderer(canvas, match, opts) {
     this.cv = canvas; this.ctx = canvas.getContext('2d');
     this.m = match; this.opts = opts || {};
-    this.zoom = this.opts.zoom || 1; this.weather = this.opts.weather || 'dia';
+    this.zoom = this.opts.zoom || 1; this.camera = this.opts.camera || 'total'; this.k = 1.5; this.weather = this.opts.weather || 'dia';
     this.camX = PL / 2; this.camY = PW / 2; this.flip = false; this.rot = false;
     this.particles = []; this.rain = []; this.flash = 0; this.crowdFrame = 0; this.shake = 0;
     this.buildPitch();
@@ -36,8 +36,20 @@
     this.rot = this.H > this.W * 1.08;
     const across = this.rot ? this.W : this.H, along = this.rot ? this.H : this.W;
     // metros visibles: más campo en horizontal, algo más cerca en móvil vertical
-    const mAcross = (this.rot ? 25 : 36) / this.zoom, mAlong = (this.rot ? 44 : 62) / this.zoom;
-    this.S = U.clamp(Math.min(across / mAcross, along / mAlong), 11, 40);
+    this.ox = this.W / 2; this.oy = this.H / 2;
+    if (this.camera === 'total') {
+      // vista cenital total (como en PC Fútbol 2.0): todo el campo a la vista y cámara fija
+      const top = 54, bottom = this.rot && this.opts.touch ? 210 : 0;
+      const availAcross = this.rot ? this.W : this.H - top, availAlong = this.rot ? this.H - top - bottom : this.W;
+      this.S = Math.max(2, Math.min(availAcross / (PW + 6), availAlong / (PL + 8)));
+      this.oy = top + (this.H - top - bottom) / 2;
+      this.camX = PL / 2; this.camY = PW / 2;
+    } else {
+      const mAcross = (this.rot ? 25 : 36) / this.zoom, mAlong = (this.rot ? 44 : 62) / this.zoom;
+      this.S = U.clamp(Math.min(across / mAcross, along / mAlong), 11, 40);
+    }
+    // con el campo entero los jugadores se dibujan algo más grandes para que se distingan
+    this.k = U.clamp(24 / this.S, 1.5, 3.2);
   };
 
   // ---------- césped, líneas, porterías y gradas (una sola vez)
@@ -132,6 +144,7 @@
   // ---------- cámara
   RP.updateCamera = function (dt) {
     const m = this.m; const b = m.ball;
+    if (this.camera === 'total') { this.camX = PL / 2; this.camY = PW / 2; if (this.shake > 0) this.shake -= dt; return; }
     let tx = b.x + b.vx * 0.35, ty = b.y + b.vy * 0.35;
     if (m.phase === 'goal') { tx = b.x; ty = b.y; }
     const k = 1 - Math.exp(-dt * 3.2);
@@ -144,7 +157,7 @@
   };
 
   RP.applyWorld = function (g) {
-    const S = this.S * this.dpr, W = this.W * this.dpr, H = this.H * this.dpr;
+    const S = this.S * this.dpr, W = this.ox * 2 * this.dpr, H = this.oy * 2 * this.dpr;
     let cx = this.camX, cy = this.camY;
     if (this.flip) { cx = PL - cx; cy = PW - cy; }
     const sx = this.shake > 0 ? (Math.random() - 0.5) * 6 : 0, sy = this.shake > 0 ? (Math.random() - 0.5) * 6 : 0;
@@ -157,8 +170,8 @@
   RP.toScreen = function (x, y) {
     if (this.flip) { x = PL - x; y = PW - y; }
     let cx = this.camX, cy = this.camY; if (this.flip) { cx = PL - cx; cy = PW - cy; }
-    if (!this.rot) return [this.W / 2 + (x - cx) * this.S, this.H / 2 + (y - cy) * this.S];
-    return [this.W / 2 + (y - cy) * this.S, this.H / 2 - (x - cx) * this.S];
+    if (!this.rot) return [this.ox + (x - cx) * this.S, this.oy + (y - cy) * this.S];
+    return [this.ox + (y - cy) * this.S, this.oy - (x - cx) * this.S];
   };
   // vector de pantalla → vector del mundo (para el mando)
   RP.screenVecToWorld = function (sx, sy) {
@@ -172,7 +185,7 @@
   RP.drawPlayer = function (g, p, kit, isRef) {
     const run = Math.min(1, (p.run || 0) / 6.5);
     const sw = Math.sin(p.anim) * 0.34 * run;
-    const k = 1.5; // exageración para que se vean bien en móvil
+    const k = this.k; // exageración para que se vean bien con el campo entero o en el móvil
     g.save(); g.translate(p.x, p.y);
     // sombra
     g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(0.32, 0.38, 0.5 * k, 0.32 * k, 0.5, 0, 7); g.fill();
@@ -224,8 +237,8 @@
   RP.drawBall = function (g) {
     const b = this.m.ball;
     const z = b.z || 0;
-    g.fillStyle = 'rgba(0,0,0,0.32)'; g.beginPath(); g.ellipse(b.x + z * 0.35 + 0.05, b.y + z * 0.35 + 0.05, 0.2, 0.14, 0, 0, 7); g.fill();
-    const r = 0.24 * (1 + z * 0.09);
+    g.fillStyle = 'rgba(0,0,0,0.32)'; g.beginPath(); g.ellipse(b.x + z * 0.35 + 0.05, b.y + z * 0.35 + 0.05, 0.13 * this.k, 0.09 * this.k, 0, 0, 7); g.fill();
+    const r = 0.16 * this.k * (1 + z * 0.09);
     // al elevarse, se desplaza un poco en pantalla (falsa perspectiva)
     const bx = b.x - z * 0.15, by = b.y - z * 0.15;
     g.save(); g.translate(bx, by); g.rotate(b.spin || 0);
@@ -282,11 +295,11 @@
     list.sort((a, b) => a.y - b.y);
     // indicador del jugador controlado
     if (m.ctrl) {
-      const p = m.ctrl; g.strokeStyle = '#ffe14d'; g.lineWidth = 0.12;
-      g.beginPath(); g.arc(p.x, p.y, 0.9, 0, 7); g.stroke();
+      const p = m.ctrl; g.strokeStyle = '#ffe14d'; g.lineWidth = 0.07 * this.k;
+      g.beginPath(); g.arc(p.x, p.y, 0.6 * this.k, 0, 7); g.stroke();
     }
     const b = m.ball;
-    if (b.owner) { g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 0.08; g.beginPath(); g.arc(b.owner.x, b.owner.y, 0.75, 0, 7); g.stroke(); }
+    if (b.owner) { g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 0.08; g.beginPath(); g.arc(b.owner.x, b.owner.y, 0.5 * this.k, 0, 7); g.stroke(); }
     for (const p of list) {
       const kit = p.isGK ? m.T[p.side].kit.gk : m.kits[p.side];
       this.drawPlayer(g, p, kit, false);
@@ -316,7 +329,7 @@
 
   RP.drawLabels = function (g) {
     const m = this.m;
-    g.font = '600 12px Rajdhani, Arial Narrow, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'bottom';
+    g.font = '600 ' + (this.camera === 'total' ? 11 : 12) + 'px Rajdhani, Arial Narrow, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'bottom';
     const show = [];
     if (m.ball.owner) show.push([m.ball.owner, '#fff']);
     if (m.ctrl && m.ctrl !== m.ball.owner) show.push([m.ctrl, '#ffe14d']);
@@ -324,9 +337,9 @@
       const [sx, sy] = this.toScreen(p.x, p.y);
       const txt = p.d.num + ' ' + p.d.short.toUpperCase();
       const w = g.measureText(txt).width + 8;
-      g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(sx - w / 2, sy - this.S * 1.25 - 15, w, 15);
-      g.fillStyle = col; g.fillText(txt, sx, sy - this.S * 1.25 - 1);
-      if (p === m.ctrl) { g.fillStyle = '#ffe14d'; g.beginPath(); g.moveTo(sx - 5, sy - this.S * 1.25 + 2); g.lineTo(sx + 5, sy - this.S * 1.25 + 2); g.lineTo(sx, sy - this.S * 1.25 + 8); g.fill(); }
+      g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(sx - w / 2, sy - this.S * 0.85 * this.k - 15, w, 15);
+      g.fillStyle = col; g.fillText(txt, sx, sy - this.S * 0.85 * this.k - 1);
+      if (p === m.ctrl) { g.fillStyle = '#ffe14d'; g.beginPath(); g.moveTo(sx - 5, sy - this.S * 0.85 * this.k + 2); g.lineTo(sx + 5, sy - this.S * 0.85 * this.k + 2); g.lineTo(sx, sy - this.S * 0.85 * this.k + 8); g.fill(); }
     });
   };
 

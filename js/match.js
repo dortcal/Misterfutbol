@@ -35,7 +35,7 @@
     this.ref = { x: PL / 2 - 8, y: PW / 2 + 10, vx: 0, vy: 0, face: 0, anim: 0 };
     this.P = [[], []];
     for (let s = 0; s < 2; s++) this.L[s].xi.forEach((id, i) => this.P[s].push(this.makeMP(world.players[id], s, i)));
-    this.ctrl = null; this.input = { mx: 0, my: 0, pass: false, shoot: false, passHeld: 0, shootHeld: 0, passRel: false, shootRel: false, switch: false };
+    this.ctrl = null; this.input = { mx: 0, my: 0, btnRel: false, btnHeldT: 0, passRel: false, shootRel: false, switch: false, lastA: null, idleT: 0 };
     this.chasers = [null, null]; this.chasePt = [null, null]; this.chaseTimer = 0;
     // saque inicial según el sorteo; en la segunda parte saca el otro equipo
     this.firstKick = cfg.kickoff === 1 ? 1 : 0; this.waitingHuman = false;
@@ -92,7 +92,7 @@
   // --------- saques y colocación
   MP.setKickoff = function (side) {
     this.kickoffSide = side;
-    if (this.input) { this.input.passRel = false; this.input.shootRel = false; }
+    if (this.input) { this.input.passRel = false; this.input.shootRel = false; this.input.btnRel = false; }
     const b = this.ball; Object.assign(b, { x: PL / 2, y: PW / 2, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null });
     for (let s = 0; s < 2; s++) this.P[s].forEach((p) => {
       if (p.off) return;
@@ -166,8 +166,8 @@
     if (this.waitingHuman) {
       this.thinkPositions(dt, true); this.moveAll(dt, true);
       this.ball.x = PL / 2; this.ball.y = PW / 2; this.ball.z = 0;
-      if (this.phaseT > 0) { this.phaseT -= dt; this.input.passRel = this.input.shootRel = false; return; }
-      if (this.input.passRel || this.input.shootRel) { this.input.passRel = this.input.shootRel = false; this.waitingHuman = false; this.executeRestart(); }
+      if (this.phaseT > 0) { this.phaseT -= dt; this.input.btnRel = this.input.passRel = this.input.shootRel = false; return; }
+      if (this.input.btnRel || this.input.passRel || this.input.shootRel) { this.input.btnRel = this.input.passRel = this.input.shootRel = false; this.waitingHuman = false; this.input.lastA = null; this.executeRestart(); }
       return;
     }
     this.t += dt * this.minPerSec * (this.phase === 'play' ? 1 : 0.35);
@@ -295,7 +295,7 @@
       for (const p of this.P[s]) {
         if (p.off) continue;
         p.think -= dt;
-        if (p === this.ctrl && !setPiece) continue;
+        if (p === this.ctrl && !setPiece && p.humanMove) continue;
         if (owner === p) continue;
         if (p.isGK) { this.gkPosition(p); continue; }
         if (!setPiece && this.chasers[s] === p && !owner) { const c = this.chasePt[s]; p.tx = c[0]; p.ty = c[1]; p.want = 1; continue; }
@@ -530,7 +530,7 @@
   MP.kick = function (p, vx, vy, vz, type, target) {
     const b = this.ball;
     b.owner = null; b.vx = vx; b.vy = vy; b.vz = vz; b.z = Math.max(b.z, 0.05);
-    b.last = p; b.kickBy = p; b.kickCd = 0.22; b.type = type; b.target = target || null; b.shotSaveTried = false; b.otCounted = false;
+    b.last = p; b.kickBy = p; b.kickCd = 0.22; b.type = type; b.target = target || null; b.shotSaveTried = false; b.otCounted = false; b.magnet = 0; b.curveT = 0;
     b.offside = target && this.isOffside(target) ? target : null;
     b.shotFrom = type === 'shot' ? [p.x, p.y] : null;
     p.kickCd = 0.3; p.state = 'kick'; p.stateT = 0.18;
@@ -541,17 +541,21 @@
   MP.pass = function (p, r, tx, ty, loft) {
     const pas = p.a.pas; const press = this.pressureOn(p);
     const d = U.dist(p.x, p.y, tx, ty);
-    const err = (0.035 + (1 - pas / 100) * 0.11 + (press < 1.5 ? 0.05 : 0)) * this.R.normal();
+    // pases más precisos: el error depende sobre todo del pase del jugador y de la presión
+    const err = (0.012 + U.clamp(1 - pas / 100, 0, 1) * 0.045 + (press < 1.5 ? 0.025 : 0)) * this.R.normal();
     const a = Math.atan2(ty - p.y, tx - p.x) + err;
-    const dd = d * (1 + this.R.normal() * (0.04 + (1 - pas / 100) * 0.08));
+    const dd = d * (1 + this.R.normal() * (0.02 + U.clamp(1 - pas / 100, 0, 1) * 0.04));
     p.st.pass++;
+    // "imán" del receptor: más fuerte cuanto mejor pasa el que da el pase y mejor controla el que recibe
+    const magnet = r ? U.clamp((p.a.pas + r.a.cal) / 200, 0.3, 1.25) : 0;
     if (loft) {
       const T = 0.75 + dd / 24;
       const v = dd / T; this.kick(p, Math.cos(a) * v, Math.sin(a) * v, GRAV * T / 2, 'pass', r);
     } else {
-      const v = U.clamp(dd * 0.95 + 4, 7, 27);
+      const v = U.clamp(dd * 1.05 + 5, 8, 28);
       this.kick(p, Math.cos(a) * v, Math.sin(a) * v, 0, 'pass', r);
     }
+    this.ball.magnet = magnet;
     p.face = a;
   };
 
@@ -594,37 +598,68 @@
   };
 
   // --------- control humano
-  MP.humanAct = function () {
+  // Control de la persona al estilo PC Fútbol 2.0:
+  // - el jugador sigue corriendo en la última dirección indicada (carrera automática);
+  // - un solo botón: toque corto = pase, mantener = tiro (más potencia cuanto más tiempo);
+  // - sin balón: toque = entrada (o cambio de jugador si estás lejos), mantener = segada más larga;
+  // - tras tirar, empujar hacia un lado da efecto al balón (ver ballPhysics).
+  MP.humanAct = function (dt) {
     if (this.human < 0 || !this.ctrl) return;
     const p = this.ctrl; const I = this.input; const b = this.ball;
     const mag = Math.hypot(I.mx, I.my);
-    if (mag > 0.15) { p.tx = p.x + I.mx / mag * 5; p.ty = p.y + I.my / mag * 5; p.want = Math.min(1, mag); }
-    else { p.tx = p.x; p.ty = p.y; p.want = 0; }
-    const dirA = mag > 0.15 ? Math.atan2(I.my, I.mx) : p.face;
-    if (b.owner === p) {
-      if (I.passRel) {
-        I.passRel = false;
-        const bp = this.bestPass(p, dirA);
-        const long = I.passHeldT > 0.28;
-        if (bp) this.pass(p, bp.r, long ? bp.r.x + this.dir[p.side] * 7 : bp.tx, long ? bp.r.y : bp.ty, long || bp.loft);
-        else { const v = 14; this.kick(p, Math.cos(dirA) * v, Math.sin(dirA) * v, long ? 6 : 0, 'pass', null); }
-      } else if (I.shootRel) {
-        I.shootRel = false;
-        const power = U.clamp(I.shootHeldT / 0.6, 0.15, 1);
+    const hasBall = b.owner === p;
+    if (mag > 0.15) { I.lastA = Math.atan2(I.my, I.mx); I.idleT = 0; } else I.idleT += dt || 0;
+    // al recibir el balón sin tocar el mando, arranca hacia la portería rival
+    if (hasBall && this._lastHumanOwner !== p) { if (mag <= 0.15) I.lastA = this.dir[p.side] === 1 ? 0 : Math.PI; }
+    this._lastHumanOwner = hasBall ? p : null;
+    if (p.state === 'slide') { p.humanMove = true; }
+    else {
+      let runA = null;
+      if (mag > 0.15) runA = I.lastA;
+      else if (I.lastA !== null && (hasBall || I.idleT < 0.5)) runA = I.lastA;
+      if (runA !== null) {
+        let tx = p.x + Math.cos(runA) * 5, ty = p.y + Math.sin(runA) * 5;
+        // la carrera automática se detiene antes de salirse del campo
+        if (mag <= 0.15 && (tx < 1 || tx > PL - 1 || ty < 1 || ty > PW - 1)) { tx = p.x; ty = p.y; I.lastA = null; p.want = 0; }
+        else p.want = mag > 0.15 ? Math.min(1, mag * 1.25) : (hasBall ? 0.85 : 0.7);
+        p.tx = U.clamp(tx, 0.6, PL - 0.6); p.ty = U.clamp(ty, 0.6, PW - 0.6); p.humanMove = true;
+      } else p.humanMove = false; // sin órdenes: la IA lo coloca en su sitio
+    }
+    if (!I.btnRel) return;
+    I.btnRel = false;
+    const held = I.btnHeldT || 0; const TAP = 0.22;
+    let aimA = I.lastA !== null && mag > 0.15 ? I.lastA : (I.lastA !== null ? I.lastA : p.face);
+    if (hasBall) {
+      if (held < TAP) {
+        const bp = this.bestPass(p, aimA);
+        if (bp) this.pass(p, bp.r, bp.tx, bp.ty, bp.loft);
+        else { const v = 14; this.kick(p, Math.cos(aimA) * v, Math.sin(aimA) * v, 0, 'pass', null); }
+      } else {
+        const power = U.clamp((held - TAP) / 0.55, 0.2, 1);
         const gx = this.oppGoalX(p.side);
-        // la puntería depende de hacia dónde se empuja el mando
-        const lat = this.dir[p.side] === 1 ? I.my : -I.my;
-        const aim = mag > 0.15 ? U.clamp(lat / Math.max(0.2, mag), -1, 1) : 0;
-        if (Math.abs(gx - p.x) < 40) this.shoot(p, aim, power);
-        else { const v = 24 * power + 8; this.kick(p, Math.cos(dirA) * v, Math.sin(dirA) * v, 4 + 6 * power, 'clear', null); }
+        if (Math.abs(gx - p.x) < 40) {
+          const lat = this.dir[p.side] === 1 ? I.my : -I.my;
+          const aim = mag > 0.15 ? U.clamp(lat / Math.max(0.2, mag), -1, 1) : 0;
+          this.shoot(p, aim, power);
+        } else { const v = 18 + 14 * power; this.kick(p, Math.cos(aimA) * v, Math.sin(aimA) * v, 4 + 6 * power, 'clear', null); }
+        this.ball.curveT = 0.9; // ventana para dar efecto
       }
+      I.lastA = null;
     } else {
-      if (I.passRel) { // entrada
-        I.passRel = false;
-        if (b.owner && b.owner.side !== p.side && U.dist(p.x, p.y, b.owner.x, b.owner.y) < 2.4 && p.tackleCd <= 0) this.tryTackle(p, b.owner, true);
-        else if (p.tackleCd <= 0) { p.state = 'slide'; p.stateT = 0.45; p.tackleCd = 0.8; p.vx += Math.cos(dirA) * 3; p.vy += Math.sin(dirA) * 3; }
+      const c = b.owner;
+      const dC = c && c.side !== p.side ? U.dist(p.x, p.y, c.x, c.y) : 99;
+      if (c && c.side !== p.side && dC < 7 && mag <= 0.15) aimA = Math.atan2(c.y - p.y, c.x - p.x);
+      if (p.tackleCd > 0) return;
+      if (held < TAP) {
+        if (dC < 2.4) this.tryTackle(p, c, true, false);
+        else this.input.switch = true; // lejos del balón: cambia al compañero más cercano
+      } else {
+        // segada: más larga cuanto más tiempo se mantiene el botón
+        const len = U.clamp((held - TAP) / 0.5, 0, 1);
+        const sp = this.speedOf(p) + 1 + len * 3;
+        p.state = 'slide'; p.stateT = 0.35 + len * 0.45; p.slideDone = false; p.tackleCd = 1.1;
+        p.vx = Math.cos(aimA) * sp; p.vy = Math.sin(aimA) * sp; p.face = aimA;
       }
-      if (I.shootRel) { I.shootRel = false; this.input.switch = true; }
     }
   };
 
@@ -633,6 +668,8 @@
     const b = this.ball; const c = b.owner;
     this.all().forEach((p) => { p.tackleCd -= dt; p.kickCd -= dt; });
     if (!c) return;
+    const hc = this.ctrl;
+    if (hc && hc.side !== c.side && hc.state === 'slide' && !hc.slideDone && U.dist(hc.x, hc.y, c.x, c.y) < 1.8) { hc.slideDone = true; this.tryTackle(hc, c, true, true); if (b.owner !== c) return; }
     for (const p of this.P[1 - c.side]) {
       if (p.off || p.isGK || p === this.ctrl || p.tackleCd > 0) continue;
       const d = U.dist(p.x, p.y, c.x, c.y);
@@ -640,15 +677,15 @@
     }
   };
 
-  MP.tryTackle = function (p, c, human) {
+  MP.tryTackle = function (p, c, human, slide) {
     const b = this.ball; p.tackleCd = 0.9 + this.R() * 0.5; p.st.tackles++;
     const diffB = c.side !== this.human && this.human >= 0 ? (this.diff - 1) * 40 : (p.side !== this.human && this.human >= 0 ? (this.diff - 1) * 40 : 0);
     const def = p.a.dfn + (p.side === this.human ? 0 : diffB), drb = c.a.reg + (c.side === this.human ? 0 : diffB);
-    let pWin = U.clamp(0.36 + (def - drb) / 140 + (human ? 0.08 : 0), 0.12, 0.8);
+    let pWin = U.clamp(0.36 + (def - drb) / 140 + (human ? 0.08 : 0) + (slide ? 0.1 : 0), 0.12, 0.85);
     // entrada por detrás
     const behind = Math.cos(Math.atan2(p.y - c.y, p.x - c.x) - c.face) < -0.55;
-    let pFoul = 0.11 + p.a.agr / 650 + (behind ? 0.1 : 0) + (human ? 0.04 : 0);
-    p.state = 'slide'; p.stateT = 0.35;
+    let pFoul = 0.11 + p.a.agr / 650 + (behind ? 0.1 : 0) + (human ? 0.04 : 0) + (slide ? 0.07 : 0);
+    if (!slide) { p.state = 'slide'; p.stateT = 0.35; }
     const r = this.R();
     if (r < pFoul) { this.foul(p, c, behind); return; }
     if (r < pFoul + pWin) {
@@ -755,7 +792,7 @@
       let dx = p.tx - p.x, dy = p.ty - p.y; const d = Math.hypot(dx, dy);
       let desV = d > 0.25 ? Math.min(maxSp * want, d * 2.6) : 0;
       let dvx = d > 0 ? dx / d * desV : 0, dvy = d > 0 ? dy / d * desV : 0;
-      if (p.state === 'slide') { dvx = p.vx; dvy = p.vy; }
+      if (p.state === 'slide') { p.vx *= 1 - 2.2 * dt; p.vy *= 1 - 2.2 * dt; dvx = p.vx; dvy = p.vy; } // la segada frena poco a poco
       const acc = 11 * dt;
       p.vx += U.clamp(dvx - p.vx, -acc, acc); p.vy += U.clamp(dvy - p.vy, -acc, acc);
       // separación entre jugadores
@@ -800,6 +837,27 @@
       const k = Math.exp(-0.9 * dt); b.vx *= k; b.vy *= k;
       const sp = Math.hypot(b.vx, b.vy); if (sp < 0.25) { b.vx = b.vy = 0; }
     }
+    // imán: el balón se curva suavemente hacia los pies del receptor
+    const tg = b.target;
+    if (tg && !tg.off && b.magnet > 0 && (b.type === 'pass' || b.type === 'cross') && b.z < 1.7) {
+      const dx = tg.x - b.x, dy = tg.y - b.y, d = Math.hypot(dx, dy);
+      const radius = 2 + 4.5 * b.magnet;
+      if (d < radius && d > 0.05) {
+        const sp = Math.hypot(b.vx, b.vy);
+        const k = Math.min(1, b.magnet * 5 * dt * (1 + (radius - d) / radius));
+        b.vx += (dx / d * sp - b.vx) * k; b.vy += (dy / d * sp - b.vy) * k;
+        if (sp > 14 && d < 3) { b.vx *= 1 - 2 * dt; b.vy *= 1 - 2 * dt; } // amortigua los pases fuertes
+      }
+    }
+    // efecto: tras un tiro de la persona, empujar en otra dirección curva el balón
+    if (b.curveT > 0) {
+      b.curveT -= dt;
+      const I = this.input; const sp = Math.hypot(b.vx, b.vy);
+      if (sp > 4 && Math.hypot(I.mx, I.my) > 0.3) {
+        const nx = -b.vy / sp, ny = b.vx / sp; const lat = U.clamp(I.mx * nx + I.my * ny, -1, 1);
+        b.vx += nx * lat * 7.5 * dt; b.vy += ny * lat * 7.5 * dt; b.curving = lat;
+      } else b.curving = 0;
+    } else b.curving = 0;
     const px = b.x, py = b.y;
     b.x += b.vx * dt; b.y += b.vy * dt;
     b.spin += Math.hypot(b.vx, b.vy) * dt * 3;
@@ -820,7 +878,8 @@
       for (const p of this.all()) {
         if (p.state === 'down') continue;
         if (p === b.kickBy && b.kickCd > 0) continue;
-        const reach = p.isGK && this.inBox(p.side, b.x, b.y) ? 1.3 : 0.85;
+        let reach = p.isGK && this.inBox(p.side, b.x, b.y) ? 1.3 : 0.85;
+        if (p === b.target && b.magnet) reach += 0.9 * b.magnet; // el receptor "atrae" el pase
         const zMax = p.isGK && this.inBox(p.side, b.x, b.y) ? 2.6 : 2.3;
         if (b.z > zMax) continue;
         const d = U.dist(p.x, p.y, b.x, b.y);
