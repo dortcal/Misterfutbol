@@ -55,7 +55,60 @@
       '<div class="grid2"><div class="panel"><h3>' + esc(th.short) + ' · ' + cfg.lhome.formation + '</h3><div class="grid2" style="gap:2px 10px;font-size:15px">' + xi(cfg.lhome) + '</div></div><div class="panel"><h3>' + esc(ta.short) + ' · ' + cfg.laway.formation + '</h3><div class="grid2" style="gap:2px 10px;font-size:15px">' + xi(cfg.laway) + '</div></div></div>' +
       (cfg.human >= 0 ? '<div class="panel"><b>Controles:</b> flechas/WASD para moverte · X pase (mantén = largo) · Z o Espacio tiro (mantén = potencia) · sin balón: X entrada, Z cambio de jugador · P pausa. En pantalla táctil usa el joystick y los botones.</div>' : '') +
       '<button class="bar gold" data-act="go" data-key="Enter" autofocus><span class="n">▶</span><span class="t">' + (cfg.human >= 0 ? 'Saltar al campo' : 'Comenzar el partido') + '</span></button></div>',
-      { go: () => MUI.live(cfg), back: () => cfg.onExit && cfg.onExit() });
+      { go: () => MUI.toss(cfg), back: () => cfg.onExit && cfg.onExit() });
+  };
+
+
+  // ---------- sorteo: cara o cruz para elegir saque o campo
+  MUI.toss = function (cfg) {
+    const w = cfg.world; const T = [w.teams[cfg.home], w.teams[cfg.away]];
+    // la persona pide para su equipo (o para el local en un visionado neutral)
+    const me = cfg.human >= 0 ? cfg.human : (cfg.userSide !== undefined && cfg.userSide >= 0 ? cfg.userSide : 0);
+    const cpu = 1 - me;
+    const portrait = G.innerHeight > G.innerWidth * 1.08;
+    const dirTxt = (d) => (portrait ? (d === 1 ? '▲ Atacar hacia arriba' : '▼ Atacar hacia abajo') : (d === 1 ? 'Atacar hacia la derecha ▶' : '◀ Atacar hacia la izquierda'));
+    const res = { kick: null, end: null }; // kick: equipo que saca; end: {team, dir}
+    const coin = '<div class="coin-wrap"><div class="coin" id="coin"><div class="face cara"><span class="cf-star">★</span><span>CARA</span></div><div class="face cruz"><span class="cf-cross">✚</span><span>CRUZ</span></div></div></div>';
+    const head = UI.head('Sorteo inicial', esc(T[0].short) + ' – ' + esc(T[1].short) + ' · el ganador elige saque o campo', null);
+    const finish = () => {
+      if (res.kick === null) res.kick = 1 - res.end.team;
+      if (!res.end) res.end = { team: 1 - res.kick, dir: U.R() < 0.5 ? 1 : -1 };
+      cfg.kickoff = res.kick;
+      cfg.dirHome = res.end.team === 0 ? res.end.dir : -res.end.dir;
+      const msg = esc(T[res.kick].short) + ' saca de centro en la primera parte; ' + esc(T[1 - res.kick].short) + ' en la segunda. ' + esc(T[res.end.team].short) + ' elige campo.';
+      UI.show(head + '<div class="wrap">' + coin + '<div class="panel center"><p class="big" style="margin:0">' + msg + '</p></div><nav class="menu" style="max-width:none"><button class="bar gold" data-act="go" data-key="Enter" autofocus><span class="n">▶</span><span class="t">' + (cfg.human >= 0 ? 'Saltar al campo' : 'Comenzar el partido') + '</span></button></nav></div>', { go: () => MUI.live(cfg) });
+    };
+    const chooseEnd = (team, title) => {
+      UI.show(head + '<div class="wrap"><div class="panel center"><p class="big" style="margin:0">' + title + '</p><p class="muted">Elige hacia qué portería ataca el ' + esc(T[team].short) + ' en la primera parte. En la segunda se cambia de campo.' + (cfg.human >= 0 ? ' Mientras juegas, la cámara siempre muestra a tu equipo atacando hacia delante.' : '') + '</p></div>' +
+        '<nav class="menu" style="max-width:none"><button class="bar" data-act="d" data-d="1" autofocus><span class="t">' + dirTxt(1) + '</span></button><button class="bar" data-act="d" data-d="-1"><span class="t">' + dirTxt(-1) + '</span></button></nav></div>',
+        { d: (el) => { res.end = { team, dir: +el.dataset.d }; finish(); } });
+    };
+    const won = (winner) => {
+      if (winner === me) {
+        UI.show(head + '<div class="wrap">' + coin + '<div class="panel center"><p class="big" style="margin:0">¡Has ganado el sorteo con el ' + esc(T[me].short) + '!</p><p class="muted">Elige: sacar de centro o escoger campo. El rival se queda con la otra opción.</p></div>' +
+          '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="kick" autofocus><span class="n">●</span><span class="t">Sacar de centro</span></button><button class="bar" data-act="end"><span class="n">⇄</span><span class="t">Elegir campo</span></button></nav></div>',
+          { kick: () => { res.kick = me; res.end = { team: cpu, dir: U.R() < 0.5 ? 1 : -1 }; finish(); }, end: () => chooseEnd(me, 'Elige campo') });
+        document.getElementById('coin').classList.add('rest-' + MUI._side);
+      } else {
+        // el rival decide
+        if (U.R() < 0.5) { res.kick = cpu; chooseEnd(me, 'El ' + esc(T[cpu].short) + ' gana el sorteo y elige sacar. Te toca elegir campo.'); }
+        else { res.end = { team: cpu, dir: U.R() < 0.5 ? 1 : -1 }; res.kick = me; finish(); }
+      }
+    };
+    UI.show(head + '<div class="wrap">' + coin + '<div class="panel center"><p class="big" style="margin:0">Pides para el ' + esc(T[me].short) + ': ¿cara o cruz?</p></div>' +
+      '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="call" data-c="cara" data-key="c" autofocus><span class="n">C</span><span class="t">Cara</span></button><button class="bar gold" data-act="call" data-c="cruz" data-key="x"><span class="n">X</span><span class="t">Cruz</span></button></nav></div>',
+      {
+        call: (el) => {
+          const call = el.dataset.c; const side = U.R() < 0.5 ? 'cara' : 'cruz'; MUI._side = side;
+          document.querySelectorAll('[data-act=call]').forEach((b) => { b.disabled = true; });
+          const c = document.getElementById('coin'); c.classList.add('flip-' + side); A.sfxPlay('click');
+          setTimeout(() => {
+            A.sfxPlay(call === side ? 'win' : 'card');
+            UI.toast('Ha salido ' + side.toUpperCase() + '. ' + (call === side ? '¡Aciertas!' : 'Gana el ' + T[cpu].short + '.'));
+            won(call === side ? me : cpu);
+          }, 1900);
+        },
+      });
   };
 
   // ---------- partido en directo
@@ -78,7 +131,7 @@
     const hooks = {};
     const m = new MF.Match(w, {
       home: cfg.home, away: cfg.away, lhome: cfg.lhome, laway: cfg.laway, thome: cfg.thome, taway: cfg.taway, kits: cfg.kits,
-      human: cfg.human, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: false, waitHalftime: true,
+      human: cfg.human, kickoff: cfg.kickoff, dirHome: cfg.dirHome, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: false, waitHalftime: true,
       manualSubs: cfg.userSide !== undefined && !S.autoSubs ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
     });
     MUI.m = m; MUI.R = null;
@@ -264,6 +317,7 @@
         root.querySelector('#clk').textContent = U.pad2(Math.min(m.dispMinute(), 99)) + '\'';
         if (radar) R.drawRadar(radar);
       }
+      if (m.waitingHuman && m.phaseT <= 0) { tick.textContent = touch ? 'Pulsa PASE para sacar de centro' : 'Pulsa X (pase) para sacar de centro'; tick.hidden = false; tickT = 0.3; }
       if (tickT > 0) { tickT -= dt; if (tickT <= 0) tick.hidden = true; }
       if (banT > 0) { banT -= dt; if (banT <= 0) ban.innerHTML = ''; }
     }

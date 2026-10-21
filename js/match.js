@@ -23,7 +23,8 @@
     this.L = [JSON.parse(JSON.stringify(cfg.lhome)), JSON.parse(JSON.stringify(cfg.laway))];
     this.kits = cfg.kits || [this.T[0].kit.home, this.T[1].kit.away];
     this.t = 0; this.half = 1; this.added = [1 + this.R.int(0, 3), 2 + this.R.int(0, 4)];
-    this.dir = [1, -1];
+    // campo elegido en el sorteo: dirHome = +1 → el local ataca hacia x = 105 en la primera parte
+    this.dir = cfg.dirHome === -1 ? [-1, 1] : [1, -1];
     this.phase = 'kickoff'; this.phaseT = 1.2; this.restart = null;
     this.score = [0, 0];
     this.events = []; this.subsIn = [[], []]; this.subsLeft = [5, 5]; this.subWindows = [3, 3];
@@ -36,7 +37,9 @@
     for (let s = 0; s < 2; s++) this.L[s].xi.forEach((id, i) => this.P[s].push(this.makeMP(world.players[id], s, i)));
     this.ctrl = null; this.input = { mx: 0, my: 0, pass: false, shoot: false, passHeld: 0, shootHeld: 0, passRel: false, shootRel: false, switch: false };
     this.chasers = [null, null]; this.chasePt = [null, null]; this.chaseTimer = 0;
-    this.kickoffSide = 0; this.setKickoff(0);
+    // saque inicial según el sorteo; en la segunda parte saca el otro equipo
+    this.firstKick = cfg.kickoff === 1 ? 1 : 0; this.waitingHuman = false;
+    this.setKickoff(this.firstKick);
     this.goalScale = cfg.goalScale || 1;
   }
 
@@ -89,6 +92,7 @@
   // --------- saques y colocación
   MP.setKickoff = function (side) {
     this.kickoffSide = side;
+    if (this.input) { this.input.passRel = false; this.input.shootRel = false; }
     const b = this.ball; Object.assign(b, { x: PL / 2, y: PW / 2, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null });
     for (let s = 0; s < 2; s++) this.P[s].forEach((p) => {
       if (p.off) return;
@@ -99,6 +103,7 @@
     const k = att[0] || this.P[side].filter((p) => !p.off && !p.isGK).sort((a, b) => b.hx - a.hx)[0];
     k.x = PL / 2 - this.dir[side] * 0.6; k.y = PW / 2;
     if (att[1]) { att[1].x = PL / 2 - this.dir[side] * 1; att[1].y = PW / 2 + 6; }
+    k.tx = k.x; k.ty = k.y; k.want = 0; k.vx = k.vy = 0; // el sacador espera junto al balón
     this.restart = { type: 'kickoff', side, taker: k };
     b.owner = k; this.phase = 'kickoff'; this.phaseT = 1.0;
   };
@@ -123,6 +128,7 @@
     const ang = Math.atan2(PW / 2 - y, og - x);
     taker.x = x - Math.cos(ang) * 0.7; taker.y = y - Math.sin(ang) * 0.7; taker.vx = taker.vy = 0;
     if (type === 'throw') { taker.x = x; taker.y = y < 1 ? -0.4 : PW + 0.4; }
+    taker.tx = taker.x; taker.ty = taker.y; taker.want = 0;
     if (type === 'penalty') {
       // resto de jugadores fuera del área
       this.all().forEach((p) => {
@@ -155,6 +161,15 @@
       return;
     }
     // reloj
+    // saque de centro de la persona: el balón no se pone en juego hasta que pulse PASE o TIRO
+    this.waitingHuman = this.phase === 'kickoff' && this.restart && this.restart.side === this.human && this.human >= 0;
+    if (this.waitingHuman) {
+      this.thinkPositions(dt, true); this.moveAll(dt, true);
+      this.ball.x = PL / 2; this.ball.y = PW / 2; this.ball.z = 0;
+      if (this.phaseT > 0) { this.phaseT -= dt; this.input.passRel = this.input.shootRel = false; return; }
+      if (this.input.passRel || this.input.shootRel) { this.input.passRel = this.input.shootRel = false; this.waitingHuman = false; this.executeRestart(); }
+      return;
+    }
     this.t += dt * this.minPerSec * (this.phase === 'play' ? 1 : 0.35);
     if (this.half === 1 && this.t >= 45 + this.added[0] && this.phase === 'play' && this.safeToStop()) { this.endHalf(); return; }
     if (this.half === 2 && this.t >= 90 + this.added[1] && this.phase === 'play' && this.safeToStop()) { this.endMatch(); return; }
@@ -193,9 +208,9 @@
     this.say('halftime', {}); this.phase = 'halftime'; this.phaseT = 2.5; this.half = 1.5;
   };
   MP.startSecondHalf = function () {
-    this.half = 2; this.t = Math.max(this.t, 45); this.t = 45; this.dir = [-1, 1];
+    this.half = 2; this.t = 45; this.dir = [-this.dir[0], -this.dir[1]]; // cambio de campo
     this.P.forEach((arr) => arr.forEach((p) => { p.stam = Math.min(1, p.stam + 0.08); }));
-    this.say('second', {}); this.setKickoff(1);
+    this.say('second', {}); this.setKickoff(1 - this.firstKick);
   };
   MP.endMatch = function () {
     this.phase = 'end'; this.t = 90 + this.added[1];

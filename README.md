@@ -8,6 +8,7 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Jugar**: controlas a tu equipo (teclado o mandos táctiles).
   - **Visionado**: ves el partido simulado en tiempo real (x1, x2 o x4), con cambios y táctica durante el partido.
   - **Resultado**: marcador final al instante con el teletipo del partido.
+- **Sorteo inicial** (Jugar y Visionado): pide cara o cruz; quien gana elige sacar de centro o escoger campo y el rival se queda con la otra opción. En la segunda parte saca el otro equipo y se cambia de campo. En Jugar, tu saque de centro no se pone en juego hasta que pulsas PASE.
 - **Liga Manager**: dirige a un club durante varias temporadas.
   - Alineación (6 sistemas), estilo, presión y tipo de pase.
   - Plantilla, fichajes (ventanas de verano e invierno), ofertas recibidas, venta de jugadores.
