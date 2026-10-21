@@ -6,7 +6,7 @@
   const UI = { act: {}, keys: null };
   const esc = U.esc;
 
-  UI.settings = Object.assign({ duration: 4, difficulty: 1, zoom: 1, camera: 'total', weather: 'dia', autoSubs: true }, U.store.get('mf27_settings', {}));
+  UI.settings = Object.assign({ duration: 4, difficulty: 1, zoom: 1, camera: 'total', weather: 'dia', autoSubs: true, assistant: false, teleSpeed: 2 }, U.store.get('mf27_settings', {}));
   UI.saveSettings = () => U.store.set('mf27_settings', UI.settings);
 
   // ---------- infraestructura de pantallas
@@ -116,6 +116,8 @@
   UI.ovr = function (v) { const c = v >= 85 ? 'o5' : v >= 78 ? 'o4' : v >= 70 ? 'o3' : v >= 62 ? 'o2' : 'o1'; return '<span class="ovr ' + c + '">' + Math.round(v) + '</span>'; };
   UI.pos = (p) => '<span class="pos-tag l-' + p.line + '" title="' + esc(DB.ROLE_NAME[p.role]) + '">' + p.role + '</span>';
   UI.fit = function (f) { f = Math.round(f); return '<span class="fit ' + (f < 60 ? 'low' : f < 80 ? 'mid' : '') + '" title="Forma física ' + f + '%"><b style="width:' + f + '%"></b></span>'; };
+  UI.fitColor = (f) => (f < 60 ? '#d33' : f < 80 ? '#e0a800' : '#2f9e44');
+  UI.starsN = (n) => '<span class="stars" aria-label="' + n + ' de 5">' + '★'.repeat(n) + '☆'.repeat(5 - n) + '</span>';
   UI.stars = function (str) { const n = U.clamp(Math.round((str - 58) / 6), 1, 5); return '<span class="stars" aria-label="' + n + ' de 5">' + '★'.repeat(n) + '☆'.repeat(5 - n) + '</span>'; };
   UI.status = function (p) {
     let s = '';
@@ -170,13 +172,13 @@
       '<div><h3>Duración del partido</h3>' + seg('duration', s.duration, [[2, '2 min'], [4, '4 min'], [6, '6 min'], [10, '10 min']]) +
       '<h3 style="margin-top:12px">Dificultad (modo Jugar)</h3>' + seg('difficulty', s.difficulty, [[0.9, 'Fácil'], [1, 'Normal'], [1.08, 'Difícil']]) +
       '<h3 style="margin-top:12px">Cámara</h3>' + seg('cam', (s.camera || 'total') === 'total' ? 'total' : s.zoom, [['total', 'Total (campo entero)'], [1.3, 'Seguimiento cerca'], [1, 'Seguimiento']]) +
-      '<h3 style="margin-top:12px">Cambios automáticos en tu equipo</h3>' + seg('autoSubs', s.autoSubs ? 1 : 0, [[1, 'Sí'], [0, 'No']]) + '</div>' +
+      '<h3 style="margin-top:12px">Dirige el segundo entrenador</h3><p class="muted" style="margin:0 0 4px">Hace los cambios y ajustes de tu equipo en Visionado y Resultado. Si no, el partido se para en el descanso para que decidas tú.</p>' + seg('assistant', s.assistant ? 1 : 0, [[1, 'Sí'], [0, 'No']]) + '</div>' +
       '</div><div class="panel"><h3>Datos guardados</h3><p class="muted" style="margin-top:0">Las partidas se guardan en este navegador. Puedes exportarlas desde Liga Manager.</p><button class="btn warn" data-act="wipe">Borrar todas las partidas y ajustes</button></div></div>',
       {
         set: (el) => {
           const k = el.dataset.k, v = el.dataset.v;
           if (k === 'voice') { A.voiceOn = v === '1'; U.store.set('mf27_voice', A.voiceOn); }
-          else if (k === 'autoSubs') s.autoSubs = v === '1';
+          else if (k === 'assistant') s.assistant = v === '1';
           else if (k === 'cam') { if (v === 'total') s.camera = 'total'; else { s.camera = 'follow'; s.zoom = parseFloat(v); } }
           else s[k] = parseFloat(v);
           UI.saveSettings(); UI.options();
@@ -194,18 +196,21 @@
   UI.help = function () {
     UI.show(UI.head('Cómo se juega', null, 'menu') + '<div class="wrap">' +
       '<div class="grid2"><div class="panel"><h2>Partido amistoso</h2><p>Elige local y visitante entre los 42 equipos de Primera y Segunda 2026/27 y decide cómo vivir el partido:</p>' +
-      '<p><b>JUGAR</b>: controlas al jugador marcado con el aro amarillo. <b>VISIONADO</b>: ves el partido con cámara cenital y puedes acelerar, pausar o hacer cambios. <b>RESULTADO</b>: el marcador final al instante con el teletipo del partido.</p></div>' +
-      '<div class="panel"><h2>Controles</h2><p style="margin-top:0">Un solo botón, como en los clásicos: <b>Espacio</b> (también X, Z, J o K) o el botón naranja en pantalla táctil.</p><div class="kv"><b>Mover</b><span>Flechas o WASD · joystick. El jugador sigue corriendo en la última dirección.</span><b>Pase</b><span>Toque corto. El compañero recibe mejor cuanto mejor pasas tú y mejor controla él.</span><b>Tiro</b><span>Mantén pulsado: cuanto más tiempo, más potencia. Apunta con la dirección.</span><b>Efecto</b><span>Justo después de tirar, pulsa hacia un lado para curvar el balón.</span><b>Sin balón</b><span>Toque = entrada (o cambio de jugador si estás lejos) · mantener = segada más larga y fuerte (roba mucho, pero si es dura o por detrás puede ser falta y tarjeta)</span><b>Tocar jugadores</b><span>Toca o haz clic en un compañero para pasarle el balón (también en saques de centro, córner, falta, penalti y banda). Toca a un rival y tu defensa más cercano irá a por él con una segada.</span><b>Mantener en un punto</b><span>Mantén pulsado en cualquier zona del campo y el balón irá allí. Sobre la portería rival es un tiro colocado muy preciso.</span><b>Saques</b><span>En tus saques el balón espera a que actúes (si no haces nada en 12 segundos, saca la máquina). Antes del saque de centro cada equipo se queda en su campo.</span><b>Pausa</b><span>P o Esc</span></div></div>' +
-      '<div class="panel"><h2>Liga Manager</h2><p>Dirige a un club de Primera o Segunda: alineación y táctica, fichajes, entrenamiento, finanzas y cantera. Al elegir club verás el objetivo de la directiva; si durante la temporada te alejas mucho de él, recibirás avisos, un ultimátum y puedes ser destituido.</p><p>El <b>mercado está abierto toda la temporada</b>: puedes fichar en Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1…), aunque las grandes figuras solo aceptan proyectos ambiciosos.</p><p><b>Copa del Rey</b>: la juegan Primera, Segunda (sin filiales) y Primera RFEF. Eliminatorias a partido único entre semana en el campo del equipo con peor media; si hay empate, prórroga y penaltis. La final se juega en campo neutral, en el estadio de uno de los grandes de Primera.</p>' +
+      '<p>' + (UI.PLAY_ENABLED ? '<b>JUGAR</b>: controlas al jugador marcado con el aro amarillo. ' : '') + '<b>VISIONADO</b>: ves el partido con cámara cenital y puedes acelerar, pausar o hacer cambios. <b>RESULTADO</b>: el marcador final al instante con el teletipo del partido.</p></div>' +
+      (UI.PLAY_ENABLED ?       '<div class="panel"><h2>Controles</h2><p style="margin-top:0">Un solo botón, como en los clásicos: <b>Espacio</b> (también X, Z, J o K) o el botón naranja en pantalla táctil.</p><div class="kv"><b>Mover</b><span>Flechas o WASD · joystick. El jugador sigue corriendo en la última dirección.</span><b>Pase</b><span>Toque corto. El compañero recibe mejor cuanto mejor pasas tú y mejor controla él.</span><b>Tiro</b><span>Mantén pulsado: cuanto más tiempo, más potencia. Apunta con la dirección.</span><b>Efecto</b><span>Justo después de tirar, pulsa hacia un lado para curvar el balón.</span><b>Sin balón</b><span>Toque = entrada (o cambio de jugador si estás lejos) · mantener = segada más larga y fuerte (roba mucho, pero si es dura o por detrás puede ser falta y tarjeta)</span><b>Tocar jugadores</b><span>Toca o haz clic en un compañero para pasarle el balón (también en saques de centro, córner, falta, penalti y banda). Toca a un rival y tu defensa más cercano irá a por él con una segada.</span><b>Mantener en un punto</b><span>Mantén pulsado en cualquier zona del campo y el balón irá allí. Sobre la portería rival es un tiro colocado muy preciso.</span><b>Saques</b><span>En tus saques el balón espera a que actúes (si no haces nada en 12 segundos, saca la máquina). Antes del saque de centro cada equipo se queda en su campo.</span><b>Pausa</b><span>P o Esc</span></div></div>' : '') +
+      '<div class="panel"><h2>Liga Manager</h2><p>Dirige a un club de Primera o Segunda: alineación y táctica, fichajes, entrenamiento, finanzas y cantera. Al elegir club verás el objetivo de la directiva; si durante la temporada te alejas mucho de él, recibirás avisos, un ultimátum y puedes ser destituido.</p><p>El <b>mercado está abierto toda la temporada</b>: puedes fichar en Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1…), aunque las grandes figuras solo aceptan proyectos ambiciosos.</p><p><b>Táctica</b>: el sistema, el estilo, la presión y el tipo de pase cambian las probabilidades de ganar según las características de tus jugadores y las del rival. No hay una opción ideal: tu segundo entrenador te da un informe antes de cada partido.</p><p><b>Personal del club</b>: segundo entrenador, recuperador de lesiones, preparador físico, psicólogo, director deportivo, director de marketing y entrenador de cantera, de 1 a 5 estrellas. Puedes despedirlos y contratar a otros en el mercado libre.</p><p><b>Competiciones internacionales</b>: Champions, Europa League y Conference League con el formato actual (fase de liga de 36), Supercopa de Europa, Copa Intercontinental y Mundial de Clubes (2029 y cada cuatro años).</p><p><b>Resultado</b>: el teletipo se puede pausar para cambiar la táctica y hacer sustituciones, o dejar que dirija el segundo entrenador.</p><p><b>Copa del Rey</b>: la juegan Primera, Segunda (sin filiales) y Primera RFEF. Eliminatorias a partido único entre semana en el campo del equipo con peor media; si hay empate, prórroga y penaltis. La final se juega en campo neutral, en el estadio de uno de los grandes de Primera.</p>' +
       '<p>Al final de la temporada descienden los 3 últimos de Primera. En Segunda suben los 2 primeros y el ganador del playoff a doble partido entre el 3º y el 6º (en caso de empate global pasa el mejor clasificado). Los 4 últimos de Segunda bajan a Primera RFEF.</p></div>' +
       '<div class="panel"><h2>Medias y datos</h2><p>Las medias de los jugadores son una estimación basada en su nivel y rendimiento reciente. Los equipos más potentes tienen mejores jugadores. Las plantillas proceden de las listas públicas de los clubes en octubre de 2026.</p><p class="muted">VEL velocidad · RES resistencia · AGR agresividad · CAL calidad · PAS pase · TIR tiro · REG regate · DEF defensa · POR portería.</p></div></div></div>',
       {});
   };
 
   // ---------- AMISTOSO
+  // El modo JUGAR está desactivado temporalmente (el código se conserva: basta con poner true)
+  UI.PLAY_ENABLED = false;
   UI.fr = Object.assign({ home: 'rma', away: 'fcb', divH: 1, divA: 1, mode: 'visionado', side: 0, weather: 'dia', lh: null, la: null, th: null, ta: null }, U.store.get('mf27_friendly', {}));
   UI.friendly = function () {
     const w = UI.baseWorld(); const F = UI.fr;
+    if (!UI.PLAY_ENABLED && F.mode === 'jugar') F.mode = 'visionado';
     if (!w.teams[F.home]) F.home = 'rma'; if (!w.teams[F.away]) F.away = 'fcb';
     const list = (side) => {
       const dv = side === 0 ? F.divH : F.divA; const sel = side === 0 ? F.home : F.away;
@@ -219,8 +224,8 @@
     UI.show(UI.head('Partido amistoso', 'Elige equipos, modo y clima', 'menu') + '<div class="wrap">' +
       '<div class="panel vs-card"><div>' + GFX.badgeImg(th, 64) + '<div class="tn">' + esc(th.name) + '</div><div class="kits"><img src="' + GFX.shirt(kits[0], 64) + '" width="34" height="34" alt="Equipación local"></div>' + UI.stars(DB.teamStrength(w, th.id)) + '</div>' +
       '<div class="vs">VS</div><div>' + GFX.badgeImg(ta, 64) + '<div class="tn">' + esc(ta.name) + '</div><div class="kits"><img src="' + GFX.shirt(kits[1], 64) + '" width="34" height="34" alt="Equipación visitante"></div>' + UI.stars(DB.teamStrength(w, ta.id)) + '</div></div>' +
-      '<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div class="row"><b style="min-width:110px">MODO</b>' + seg('mode', F.mode, [['jugar', 'Jugar'], ['visionado', 'Visionado'], ['resultado', 'Resultado']]) + '</div>' +
-      (F.mode === 'jugar' ? '<div class="row"><b style="min-width:110px">CONTROLAS</b>' + seg('side', F.side, [[0, esc(th.short)], [1, esc(ta.short)]]) + '</div>' : '') +
+      '<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div class="row"><b style="min-width:110px">MODO</b>' + seg('mode', F.mode, (UI.PLAY_ENABLED ? [['jugar', 'Jugar']] : []).concat([['visionado', 'Visionado'], ['resultado', 'Resultado']])) + '</div>' +
+      '<div class="row"><b style="min-width:110px">' + (F.mode === 'jugar' ? 'CONTROLAS' : 'TU EQUIPO') + '</b>' + seg('side', F.side, [[0, esc(th.short)], [1, esc(ta.short)]]) + '</div>' +
       (F.mode !== 'resultado' ? '<div class="row"><b style="min-width:110px">CLIMA</b>' + seg('weather', F.weather, [['dia', 'Día'], ['noche', 'Noche'], ['lluvia', 'Lluvia']]) + '</div>' +
         '<div class="row"><b style="min-width:110px">DURACIÓN</b>' + seg('duration', UI.settings.duration, [[2, '2 min'], [4, '4 min'], [6, '6 min'], [10, '10 min']]) + '</div>' : '') +
       '<div class="row"><button class="btn alt" data-act="lineup" data-s="0">Alineación ' + esc(th.short) + '</button><button class="btn alt" data-act="lineup" data-s="1">Alineación ' + esc(ta.short) + '</button><button class="btn alt" data-act="swap">⇄ Intercambiar</button><button class="btn alt" data-act="random">Al azar</button></div>' +
@@ -242,7 +247,7 @@
           if (F.home === F.away) { UI.toast('Elige dos equipos distintos.'); return; }
           const lh = DB.validLineup(w, F.home, F.lh || DB.autoLineup(w, F.home, w.teams[F.home].formation));
           const la = DB.validLineup(w, F.away, F.la || DB.autoLineup(w, F.away, w.teams[F.away].formation));
-          const cfg = { world: w, home: F.home, away: F.away, lhome: lh, laway: la, thome: F.th || w.teams[F.home], taway: F.ta || w.teams[F.away], mode: F.mode, human: F.mode === 'jugar' ? F.side : -1, weather: F.weather, friendly: true,
+          const cfg = { world: w, home: F.home, away: F.away, lhome: lh, laway: la, thome: F.th || w.teams[F.home], taway: F.ta || w.teams[F.away], mode: F.mode, human: F.mode === 'jugar' ? F.side : -1, userSide: F.side, weather: F.weather, friendly: true,
             onExit: () => UI.friendly() };
           MF.MUI.start(cfg);
         },
@@ -265,7 +270,7 @@
         const col = s[0] === 'POR' ? team.kit.gk.p : kit.p;
         const st = 'left:' + (s[2] * 100) + '%;top:' + ((1 - s[1] / 0.75) * 92 + 4) + '%';
         return '<button class="slot ' + (bad ? 'bad ' : '') + (sel && sel.type === 'slot' && sel.i === i ? 'sel ' : '') + (p ? '' : 'empty') + '" style="' + st + '" data-act="slot" data-i="' + i + '" aria-label="' + s[0] + ': ' + (p ? esc(p.name) : 'vacío') + '">' +
-          '<span class="sh" style="background:' + col + ';color:' + (MF.DB.colorDist(col, '#ffffff') < 120 ? '#111' : '#fff') + '">' + (p ? p.num : '?') + '</span><span class="nm">' + (p ? esc(p.short) : '—') + '</span><span class="rl">' + s[0] + (p ? ' · ' + Math.round(DB.effOvr(p, s[0])) : '') + '</span></button>';
+          '<span class="sh" style="background:' + col + ';color:' + (MF.DB.colorDist(col, '#ffffff') < 120 ? '#111' : '#fff') + '">' + (p ? p.num : '?') + '</span><span class="nm">' + (p ? esc(p.short) : '—') + '</span><span class="rl">' + s[0] + (p ? ' · ' + Math.round(DB.effOvr(p, s[0])) : '') + '</span>' + (p ? '<span class="fitbar" title="Estado físico ' + Math.round(p.fit) + '%"><i style="width:' + Math.round(p.fit) + '%;background:' + UI.fitColor(p.fit) + '"></i></span>' : '') + '</button>';
       }).join('');
       const rating = DB.lineupRating(w, L);
       const seg = (k, v, opts) => '<div class="seg">' + opts.map(([x, l]) => '<button class="btn ' + (v === x ? 'on' : '') + '" data-act="tac" data-k="' + k + '" data-v="' + x + '">' + l + '</button>').join('') + '</div>';
@@ -274,15 +279,16 @@
         '<div class="row"><b style="min-width:92px">ESTILO</b>' + seg('style', T.style, [['defensiva', 'Defensivo'], ['equilibrada', 'Equilibrado'], ['ofensiva', 'Ofensivo']]) + '</div>' +
         '<div class="row"><b style="min-width:92px">PRESIÓN</b>' + seg('press', T.press, [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]) + '</div>' +
         '<div class="row"><b style="min-width:92px">PASES</b>' + seg('passing', T.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '<span class="spacer"></span><button class="btn alt" data-act="auto">Once automático</button><button class="btn goldb" data-act="done">Confirmar</button></div></div>' +
+        (o.report ? '<div class="panel report">' + o.report(L, T) + '</div>' : '') +
         '<div class="lineup"><div><div class="pitchbox"><div class="cc"></div>' + pitch + '</div><p class="muted">El borde rojo indica que el jugador está fuera de su demarcación natural y rinde menos.</p></div>' +
-        '<div class="panel" style="padding:6px"><div class="tbl-wrap" style="max-height:70vh;overflow-y:auto"><table class="tbl sq"><thead><tr><th>#</th><th>Pos</th><th>Jugador</th><th class="num">Med</th><th class="hide-sm">Forma</th><th></th></tr></thead><tbody>' +
-        squad.map((p) => { const i = L.xi.indexOf(p.id); return '<tr class="click ' + (sel && sel.type === 'pl' && sel.id === p.id ? 'sel' : '') + '" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + UI.status(p) + (i >= 0 ? '<span class="tag t-xi">' + DB.FORMATIONS[L.formation][i][0] + '</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td class="hide-sm">' + UI.fit(p.fit) + '</td><td><button class="btn alt" style="min-height:26px;padding:0 6px;font-size:11px" data-act="info" data-id="' + p.id + '" aria-label="Ficha de ' + esc(p.name) + '">i</button></td></tr>'; }).join('') +
+        '<div class="panel" style="padding:6px"><div class="tbl-wrap" style="max-height:70vh;overflow-y:auto"><table class="tbl sq"><thead><tr><th>#</th><th>Pos</th><th>Jugador</th><th class="num">Med</th><th>Físico</th><th class="num hide-sm">Moral</th><th></th></tr></thead><tbody>' +
+        squad.map((p) => { const i = L.xi.indexOf(p.id); return '<tr class="click ' + (sel && sel.type === 'pl' && sel.id === p.id ? 'sel' : '') + '" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + UI.status(p) + (i >= 0 ? '<span class="tag t-xi">' + DB.FORMATIONS[L.formation][i][0] + '</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td style="white-space:nowrap">' + UI.fit(p.fit) + ' <small>' + Math.round(p.fit) + '%</small></td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td><button class="btn alt" style="min-height:26px;padding:0 6px;font-size:11px" data-act="info" data-id="' + p.id + '" aria-label="Ficha de ' + esc(p.name) + '">i</button></td></tr>'; }).join('') +
         '</tbody></table></div></div></div></div>',
         {
           done: () => { const v = DB.validLineup(w, tid, L); o.onDone(v, T); },
           form: (el) => { L = DB.autoLineup(w, tid, el.dataset.f); sel = null; render(); },
           tac: (el) => { T[el.dataset.k] = el.dataset.v; render(); },
-          auto: () => { L = DB.autoLineup(w, tid, L.formation); sel = null; render(); },
+          auto: () => { if (o.autoFn) { const r = o.autoFn(L.formation); L = r.lineup; if (r.tactics) Object.assign(T, r.tactics); if (r.msg) UI.toast(r.msg); } else L = DB.autoLineup(w, tid, L.formation); sel = null; render(); },
           info: (el, e) => { e.stopPropagation(); UI.playerModal(w, +el.dataset.id, {}); },
           slot: (el) => {
             const i = +el.dataset.i;

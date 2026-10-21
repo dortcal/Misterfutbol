@@ -23,6 +23,8 @@
       case 'offside': return 'Fuera de juego de ' + P(ev.pid) + '.';
       case 'corner': return 'Córner para el ' + T(ev.side) + '.';
       case 'goalkick': return 'Fuera de meta. Saque de puerta para el ' + T(ev.side) + '.';
+      case 'wall': return pick(['¡Rebota en la barrera!', 'El disparo se estrella en la barrera.']);
+      case 'wallset': return 'El ' + T(ev.side) + ' forma una barrera de cuatro jugadores.';
       case 'header': return 'Remate de cabeza de ' + P(ev.pid) + '…';
       case 'sub': return 'Cambio en el ' + T(ev.side) + ': entra ' + P(ev.pid) + ', sale ' + P(ev.out) + '.';
       case 'injury': return P(ev.pid) + ' se duele en el suelo. Parece lesionado.';
@@ -133,7 +135,8 @@
     const m = new MF.Match(w, {
       home: cfg.home, away: cfg.away, lhome: cfg.lhome, laway: cfg.laway, thome: cfg.thome, taway: cfg.taway, kits: cfg.kits,
       human: cfg.human, kickoff: cfg.kickoff, dirHome: cfg.dirHome, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: !!cfg.neutral, waitHalftime: true,
-      manualSubs: cfg.userSide !== undefined && !S.autoSubs ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
+      manualSubs: cfg.userSide !== undefined && cfg.userSide >= 0 && !S.assistant ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
+      drainMul: cfg.simExtra && cfg.simExtra.drainMul,
     });
     MUI.m = m; MUI.R = null;
     const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather, camera: S.camera || 'total', touch }); MUI.R = R;
@@ -282,7 +285,7 @@
       let outSel = null;
       const draw = () => {
         ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">Cambios · quedan ' + m.subsLeft[s] + '</div><button class="btn alt" data-o="back">◀</button></div><div class="body"><p class="muted" style="margin:0">Elige quién sale y después quién entra.</p><div class="cols-2"><div><h3>En el campo</h3><table class="tbl"><tbody>' +
-          onp.map((p) => '<tr class="click ' + (outSel === p ? 'me' : '') + '" data-out="' + p.d.id + '"><td>' + p.role + '</td><td>' + esc(p.d.short) + (p.injured ? ' <span class="tag t-inj">LES</span>' : '') + (p.yel ? ' <span class="tag" style="background:#e0a800">TA</span>' : '') + '</td><td>' + UI.fit(p.stam * 100) + '</td></tr>').join('') +
+          onp.map((p) => '<tr class="click ' + (outSel === p ? 'me' : '') + '" data-out="' + p.d.id + '"><td>' + p.role + '</td><td>' + UI.ovr(p.d.ovr) + ' ' + esc(p.d.short) + (p.injured ? ' <span class="tag t-inj">LES</span>' : '') + (p.yel ? ' <span class="tag" style="background:#e0a800">TA</span>' : '') + '</td><td>' + UI.fit(p.stam * 100) + '</td></tr>').join('') +
           '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((p) => '<tr class="click" data-in="' + p.id + '"><td>' + UI.pos(p) + '</td><td>' + esc(p.short) + '</td><td>' + UI.ovr(p.ovr) + '</td></tr>').join('') : '<tr><td>Sin suplentes disponibles</td></tr>') + '</tbody></table></div></div></div></div></div>';
         bindOverlay();
         ovl.querySelectorAll('[data-out]').forEach((r) => r.addEventListener('click', () => { outSel = onp.find((p) => p.d.id === +r.dataset.out); draw(); }));
@@ -302,7 +305,7 @@
         '<div class="row"><b style="min-width:80px">Presión</b>' + seg('press', t.press, [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]) + '</div>' +
         '<div class="row"><b style="min-width:80px">Pases</b>' + seg('passing', t.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '</div></div></div></div>';
       bindOverlay();
-      ovl.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; if (cfg.onTactics) cfg.onTactics(t); tacMenu(); }));
+      ovl.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; m.retune(); if (cfg.onTactics) cfg.onTactics(t); tacMenu(); }));
     }
     function halftime() {
       paused = true;
@@ -396,41 +399,118 @@
     if (UI.wantMusic && A.on) setTimeout(() => A.startMusic(), 800);
   };
 
-  // ---------- modo RESULTADO: teletipo
+  // ---------- modo RESULTADO: teletipo interactivo (se simula minuto a minuto)
+  // Puedes pausar para cambiar la táctica y hacer sustituciones, o dejar que dirija el segundo entrenador.
   MUI.teletipo = function (cfg) {
     const w = cfg.world; const th = w.teams[cfg.home], ta = w.teams[cfg.away];
-    A.init();
-    const res = cfg.precomputed || MF.SIM.play(w, { home: cfg.home, away: cfg.away, lhome: cfg.lhome, laway: cfg.laway, neutral: !!cfg.neutral });
-    const evs = res.events.filter((e) => ['goal', 'red', 'injury'].indexOf(e.type) >= 0);
-    UI.show(UI.head(cfg.label || 'Partido amistoso', 'Resultado', null) + '<div class="wrap">' +
+    const S = UI.settings; A.init();
+    const us = cfg.userSide !== undefined ? cfg.userSide : -1;
+    const R = U.rng(cfg.seed || (Date.now() >>> 0));
+    let L = [JSON.parse(JSON.stringify(cfg.lhome)), JSON.parse(JSON.stringify(cfg.laway))];
+    const TT = [Object.assign({}, cfg.thome || th), Object.assign({}, cfg.taway || ta)];
+    const ex = cfg.simExtra || {};
+    let res = null, min = 0, paused = false, speed = S.teleSpeed || 2, timer = null, done = false, iv = null;
+    const sc = [0, 0]; const evShown = new Set();
+    const stars = cfg.assistantStars === undefined ? 3 : cfg.assistantStars;
+    const assist = () => !!S.assistant;
+    const name = (id) => (w.players[id] ? w.players[id].short : '');
+    UI.show(UI.head(cfg.label || 'Partido amistoso', esc(cfg.venue || th.stadium) + (cfg.neutral ? ' (campo neutral)' : '') + ' · Resultado', null) + '<div class="wrap">' +
       '<div class="panel"><div class="bigscore">' + GFX.badgeImg(th, 56) + '<span>' + esc(th.abbr) + '</span><span id="s0">0</span><span class="sep">-</span><span id="s1">0</span><span>' + esc(ta.abbr) + '</span>' + GFX.badgeImg(ta, 56) + '</div></div>' +
       '<div class="teletipo" aria-live="polite"><div>&gt; ' + esc((cfg.venue || th.stadium).toUpperCase()) + ' · MINUTO <span id="tmin">0</span></div><div id="tl"></div></div>' +
-      '<nav class="menu" style="max-width:none"><button class="bar" data-act="skip" data-key="Enter" id="skipb" autofocus><span class="n">»</span><span class="t">Ver resultado final</span></button></nav></div>',
-      { skip: () => { min = 91; } });
-    let min = 0, k = 0; const sc = [0, 0];
+      '<div class="tele-ctl">' +
+      (us >= 0 ? '<button class="bar small" data-act="pause" data-key="p"><span class="n">⏸</span><span class="t">Pausa · táctica y cambios</span></button>' : '') +
+      '<button class="bar small grey" data-act="speed"><span class="n">»</span><span class="t">Velocidad <b id="spdv">x' + speed + '</b></span></button>' +
+      (us >= 0 ? '<button class="bar small grey" data-act="assist"><span class="n">🧑‍💼</span><span class="t">Dirige el 2º entrenador: <b id="asv">' + (assist() ? 'SÍ' : 'NO') + '</b></span></button>' : '') +
+      '<button class="bar small" data-act="skip" data-key="Enter" id="skipb"><span class="n">⏭</span><span class="t">Ver resultado final</span></button></div><div id="tovl"></div></div>',
+      {
+        skip: () => { finishFast(); },
+        speed: () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; S.teleSpeed = speed; UI.saveSettings(); document.getElementById('spdv').textContent = 'x' + speed; restart(); },
+        assist: () => { S.assistant = !S.assistant; UI.saveSettings(); document.getElementById('asv').textContent = assist() ? 'SÍ' : 'NO'; UI.toast(assist() ? 'El segundo entrenador hará los cambios y ajustes.' : 'Tú decides los cambios: el partido se parará en el descanso.'); },
+        pause: () => { if (!done) openPanel(''); },
+      });
     const tl = document.getElementById('tl');
-    const iv = setInterval(() => {
-      min++;
-      const tm = document.getElementById('tmin'); if (!tm) { clearInterval(iv); return; }
-      tm.textContent = Math.min(90, min);
-      while (k < evs.length && evs[k].min <= min) {
-        const e = evs[k++]; const p = w.players[e.pid];
-        const team = (e.side === 0 ? th : ta).short.toUpperCase();
-        let txt = '', cls = '';
-        if (e.type === 'goal') { sc[e.side]++; cls = 'gol'; txt = e.min + '\' GOL DEL ' + team + ': ' + (p ? p.name.toUpperCase() : '') + (e.own ? ' (P.P.)' : '') + ' · ' + sc[0] + '-' + sc[1]; A.sfxPlay('goal'); }
-        if (e.type === 'red') { cls = 'roja'; txt = e.min + '\' EXPULSADO ' + (p ? p.name.toUpperCase() : '') + ' (' + team + ')'; }
-        if (e.type === 'injury') { txt = e.min + '\' SE LESIONA ' + (p ? p.name.toUpperCase() : '') + ' (' + team + ')'; }
-        const d = document.createElement('div'); d.className = 'ln ' + cls; d.textContent = '> ' + txt; tl.appendChild(d);
-        document.getElementById('s0').textContent = sc[0]; document.getElementById('s1').textContent = sc[1];
+    const line = (txt, cls) => { const d = document.createElement('div'); d.className = 'ln ' + (cls || ''); d.textContent = '> ' + txt; tl.appendChild(d); tl.scrollTop = tl.scrollHeight; };
+    const tickMs = () => ({ 1: 260, 2: 110, 4: 35 }[speed] || 110);
+    function restart() { if (iv) clearInterval(iv); if (!paused && !done) iv = setInterval(step, tickMs()); }
+    function autoS() { return [us === 0 ? assist() : true, us === 1 ? assist() : true]; }
+    // decisiones del segundo entrenador (o de la IA rival) durante el partido
+    function coach(s, m) {
+      if (s === us && !assist()) return;
+      const gd = res.score[s] - res.score[1 - s]; const t = TT[s]; const q = s === us ? stars : 3;
+      if (q < 2 && s === us) return;
+      if (m === 60 || m === 75) {
+        if (gd < 0 && t.style !== 'ofensiva') { t.style = 'ofensiva'; if (s === us) line(m + '\' EL SEGUNDO ENTRENADOR PIDE IR AL ATAQUE'); }
+        else if (gd > 0 && m === 75 && t.style === 'ofensiva') { t.style = 'equilibrada'; if (s === us) line(m + '\' EL SEGUNDO ENTRENADOR ORDENA GUARDAR LA VENTAJA'); }
       }
-      if (min >= 90) {
-        clearInterval(iv);
-        while (k < evs.length) { const e = evs[k++]; if (e.type === 'goal') sc[e.side]++; }
-        document.getElementById('s0').textContent = res.score[0]; document.getElementById('s1').textContent = res.score[1];
-        const d = document.createElement('div'); d.className = 'ln'; d.textContent = '> FINAL DEL PARTIDO'; tl.appendChild(d);
-        setTimeout(() => MUI.summary(cfg, res), 900);
-      }
-    }, 50);
+    }
+    function step() {
+      if (paused || done) return;
+      if (!document.getElementById('tmin')) { clearInterval(iv); return; }
+      const m = min + 1;
+      if (m === 60 || m === 75) { coach(0, m); coach(1, m); }
+      res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: m, base: res, autoSubs: autoS() }));
+      L = res.L; min = m;
+      document.getElementById('tmin').textContent = m;
+      let stop = '';
+      res.events.forEach((e, i) => {
+        if (evShown.has(i) || e.min > m) return; evShown.add(i);
+        const team = (e.side === 0 ? th : ta).short.toUpperCase(); const nm = name(e.pid).toUpperCase();
+        if (e.type === 'goal') { sc[e.side]++; line(e.min + '\' GOL DEL ' + team + ': ' + nm + (e.own ? ' (P.P.)' : e.pen ? ' (PEN.)' : '') + ' · ' + sc[0] + '-' + sc[1], 'gol'); A.sfxPlay('goal'); }
+        if (e.type === 'red') line(e.min + '\' EXPULSADO ' + nm + ' (' + team + ')', 'roja');
+        if (e.type === 'injury') { line(e.min + '\' SE LESIONA ' + nm + ' (' + team + ')'); if (e.side === us && !assist() && L[us].xi.indexOf(e.pid) >= 0) stop = 'Lesión de ' + name(e.pid) + ': haz un cambio.'; }
+        if (e.type === 'sub') line(e.min + '\' CAMBIO EN EL ' + team + ': ENTRA ' + nm + ', SALE ' + name(e.out).toUpperCase(), 'cambio');
+      });
+      document.getElementById('s0').textContent = res.score[0]; document.getElementById('s1').textContent = res.score[1];
+      if (m === 45) { line('DESCANSO · ' + res.score[0] + '-' + res.score[1]); if (us >= 0 && !assist()) stop = 'Descanso'; }
+      if (m >= 90) { end(); return; }
+      if (stop) openPanel(stop);
+    }
+    function end() {
+      done = true; clearInterval(iv);
+      line('FINAL DEL PARTIDO');
+      setTimeout(() => MUI.summary(cfg, res), 900);
+    }
+    function finishFast() {
+      if (done) return; paused = false; document.getElementById('tovl').innerHTML = ''; clearInterval(iv);
+      res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: 90, base: res, autoSubs: [true, true] }));
+      min = 90; done = true; MUI.summary(cfg, res);
+    }
+    // panel de pausa: táctica y sustituciones
+    function openPanel(title) {
+      paused = true; clearInterval(iv);
+      const s = us; const lu = L[s]; const slots = DB.FORMATIONS[lu.formation];
+      const reds = new Set((res ? res.events : []).filter((e) => e.type === 'red' && e.side === s).map((e) => e.pid));
+      const subbedOut = new Set((res ? res.events : []).filter((e) => e.type === 'sub' && e.side === s).map((e) => e.out));
+      const injured = new Set((res ? res.events : []).filter((e) => e.type === 'injury' && e.side === s).map((e) => e.pid));
+      const stam = (id) => Math.round(((res && res.stam[id] !== undefined) ? res.stam[id] : w.players[id].fit / 100) * 100);
+      const left = res ? res.subsLeft[s] : 5;
+      const bench = (lu.bench || []).filter((id) => w.players[id] && !subbedOut.has(id) && lu.xi.indexOf(id) < 0 && DB.available(w.players[id]));
+      const t = TT[s]; let outSel = MUI._outSel || null;
+      const seg = (k, v, opts) => '<div class="seg">' + opts.map(([x, l]) => '<button class="btn ' + (v === x ? 'on' : '') + '" data-tk="' + k + '" data-tv="' + x + '">' + l + '</button>').join('') + '</div>';
+      document.getElementById('tovl').innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">' + esc(title || 'Pausa') + ' · ' + min + '\' · ' + (res ? res.score[0] + '-' + res.score[1] : '0-0') + '</div><button class="btn goldb" data-p="go">▶ Seguir</button></div><div class="body">' +
+        '<div class="panel" style="display:grid;gap:6px"><div class="row"><b style="min-width:70px">Estilo</b>' + seg('style', t.style, [['defensiva', 'Defensivo'], ['equilibrada', 'Equilibrado'], ['ofensiva', 'Ofensivo']]) + '</div>' +
+        '<div class="row"><b style="min-width:70px">Presión</b>' + seg('press', t.press, [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]) + '</div>' +
+        '<div class="row"><b style="min-width:70px">Pases</b>' + seg('passing', t.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '</div></div>' +
+        '<p class="muted" style="margin:6px 0">Cambios: quedan <b>' + left + '</b>. Toca quién sale y después quién entra.</p><div class="cols-2"><div><h3>En el campo</h3><table class="tbl"><tbody>' +
+        lu.xi.map((id, i) => (id === null || reds.has(id)) ? '' : '<tr class="click ' + (outSel === id ? 'me' : '') + '" data-out="' + id + '"><td>' + slots[i][0] + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + (injured.has(id) ? ' <span class="tag t-inj">LES</span>' : '') + '</td><td style="white-space:nowrap">' + UI.fit(stam(id)) + ' <small>' + stam(id) + '%</small></td></tr>').join('') +
+        '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((id) => '<tr class="click" data-in="' + id + '"><td>' + UI.pos(w.players[id]) + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + '</td><td>' + UI.fit(w.players[id].fit) + '</td></tr>').join('') : '<tr><td>Sin suplentes</td></tr>') + '</tbody></table></div></div></div></div></div>';
+      const box = document.getElementById('tovl');
+      box.querySelector('[data-p="go"]').addEventListener('click', () => { MUI._outSel = null; box.innerHTML = ''; paused = false; restart(); });
+      box.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; if (cfg.onTactics) cfg.onTactics(t); A.sfxPlay('click'); openPanel(title); }));
+      box.querySelectorAll('[data-out]').forEach((r) => r.addEventListener('click', () => { MUI._outSel = +r.dataset.out; openPanel(title); }));
+      box.querySelectorAll('[data-in]').forEach((r) => r.addEventListener('click', () => {
+        const o = MUI._outSel; if (!o) { UI.toast('Primero elige quién sale.'); return; }
+        if (left <= 0) { UI.toast('Ya no quedan cambios.'); return; }
+        if (!res) res = MF.SIM.emptyResult(cfg.home, cfg.away);
+        res.subsIn = res.subsIn || [[], []]; res.subsLeft = res.subsLeft || [5, 5];
+        if (!res.startXI) res.startXI = [L[0].xi.slice(), L[1].xi.slice()];
+        MF.SIM.applySub(res, L[s], s, o, +r.dataset.in, Math.max(1, min), null, null);
+        line(Math.max(1, min) + '\' CAMBIO: ENTRA ' + name(+r.dataset.in).toUpperCase() + ', SALE ' + name(o).toUpperCase(), 'cambio');
+        evShown.add(res.events.length - 1);
+        MUI._outSel = null; A.sfxPlay('whistle', 1); openPanel(title);
+      }));
+    }
+    restart();
   };
 
   MF.MUI = MUI;

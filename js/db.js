@@ -86,11 +86,35 @@
     });
     (G.MF_PLAYERS || []).forEach((r) => { const p = DB.makePlayer(r); players[p.id] = p; });
     const w = { teams, players, nextPid: Math.max.apply(null, Object.keys(players).map(Number)) + 1 };
+    DB.addForeign(w);
     Object.values(teams).forEach((t) => { const l = DB.autoLineup(w, t.id); t.formation = DB.bestFormation(w, t.id); });
     return w;
   };
 
-  DB.teamPlayers = (w, tid) => Object.values(w.players).filter((p) => p.team === tid);
+  // Clubes de otras ligas (div 5): plantillas de referencia que no se guardan en la partida (se regeneran al cargar)
+  DB.foreignTeam = function (c) {
+    return {
+      id: c.id, name: c.name, short: c.short, abbr: c.abbr, city: c.city, stadium: c.stadium, cap: c.cap, budget: 400, base: c.base, div: 5, badge: 'round', parent: null,
+      foreign: true, country: c.country, conf: c.conf, titles: {},
+      kit: Object.assign(JSON.parse(JSON.stringify(c.kit)), { gk: { p: '#2b2b2b', s: '#111111', pat: 'plain', sh: '#111111', so: '#2b2b2b' } }),
+      formation: '4-3-3', style: 'equilibrada', press: 'media', passing: 'mixto', mor: 70, ticket: 60, fans: 0.85,
+    };
+  };
+  DB.addForeign = function (w, skip) {
+    const Wd = G.MF_WORLD; if (!Wd) return;
+    Wd.clubs.forEach((c) => { if (!w.teams[c.id]) w.teams[c.id] = DB.foreignTeam(c); });
+    Wd.players.forEach((r) => { if (w.players[r[0]] || (skip && skip[r[0]])) return; const p = DB.makePlayer(r); p.fx = true; w.players[p.id] = p; });
+    DB.touch(w);
+  };
+  // índice equipo → jugadores (se invalida con DB.touch cuando cambian las plantillas)
+  DB.touch = function (w) { Object.defineProperty(w, '_idx', { value: null, writable: true, enumerable: false, configurable: true }); };
+  DB.teamPlayers = function (w, tid) {
+    if (!w._idx) {
+      const idx = {}; Object.values(w.players).forEach((p) => { (idx[p.team] = idx[p.team] || []).push(p); });
+      Object.defineProperty(w, '_idx', { value: idx, writable: true, enumerable: false, configurable: true });
+    }
+    return (w._idx[tid] || []).slice();
+  };
   DB.available = (p) => p.inj <= 0 && p.sus <= 0;
 
   // Efectividad del jugador en un puesto (media ajustada por forma y moral)

@@ -21,6 +21,8 @@
     this.T = [world.teams[cfg.home], world.teams[cfg.away]];
     this.tac = [cfg.thome || this.T[0], cfg.taway || this.T[1]];
     this.L = [JSON.parse(JSON.stringify(cfg.lhome)), JSON.parse(JSON.stringify(cfg.laway))];
+    // ventaja táctica (mismo modelo que la simulación): se traduce en mejores o peores atributos en el campo
+    this.edge = MF.SIM.tacticEdge(world, this.L, this.tac);
     this.kits = cfg.kits || [this.T[0].kit.home, this.T[1].kit.away];
     this.t = 0; this.half = 1; this.added = [1 + this.R.int(0, 3), 2 + this.R.int(0, 4)];
     // campo elegido en el sorteo: dirHome = +1 → el local ataca hacia x = 105 en la primera parte
@@ -51,6 +53,11 @@
     const a = {}; const home = side === 0 && !this.neutral ? 2 : 0;
     const pen = DB.rolePenalty(d.role, f[0]) * 0.6;
     Object.keys(d.at).forEach((k) => { a[k] = U.clamp(74 + (d.at[k] - 74) * 1.55 + home - pen + (d.fit - 100) * 0.1, 10, 125); });
+    if (this.edge) {
+      const A = Math.pow(this.edge.A[side], 0.8), K = Math.pow(1 / this.edge.K[side], 0.8);
+      ['pas', 'tir', 'reg', 'cal'].forEach((k) => { a[k] = U.clamp(a[k] * A, 10, 130); });
+      ['dfn', 'por'].forEach((k) => { a[k] = U.clamp(a[k] * K, 10, 130); });
+    }
     return {
       d, a, side, slot, role: f[0], line: DB.LINE_OF[f[0]], hx: f[1], hy: f[2], isGK: f[0] === 'POR',
       x: 0, y: 0, vx: 0, vy: 0, face: 0, tx: 0, ty: 0, want: 0.6,
@@ -79,7 +86,8 @@
 
   MP.speedOf = function (p) {
     const vel = p.a.vel * (p.side === this.human || this.human < 0 ? 1 : this.diff);
-    return (6.0 + vel * 0.032) * (0.84 + 0.16 * p.stam);
+    // el cansancio ralentiza: con la energía al 40% se corre un 15-20% menos
+    return (6.0 + vel * 0.032) * (0.7 + 0.3 * Math.min(1, p.stam + 0.08));
   };
 
   MP.say = function (type, data) {
@@ -143,11 +151,27 @@
       });
       const gk = this.gk(1 - side); if (gk) { gk.x = this.ownGoalX(1 - side) + this.dir[1 - side] * 0.3; gk.y = PW / 2; }
     }
+    // saque de meta: rivales fuera del área
+    if (type === 'goalkick') this.active(1 - side).forEach((p) => { const [x2, y2] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x2; p.y = y2; p.tx = x2; p.ty = y2; p.vx = p.vy = 0; });
+    // falta cerca del área: barrera de 4 jugadores a 9,15 m en la línea balón-portería
+    if (type === 'free') {
+      const gx = this.ownGoalX(1 - side); const d = U.dist(x, y, gx, PW / 2);
+      if (d < 34 && Math.abs(this.ax(1 - side, x)) < 0.36) {
+        const a = Math.atan2(PW / 2 - y, gx - x); const cx = x + Math.cos(a) * 9.15, cy = y + Math.sin(a) * 9.15;
+        const wall = this.active(1 - side).filter((q) => !q.isGK).sort((q1, q2) => U.dist(q1.x, q1.y, cx, cy) - U.dist(q2.x, q2.y, cx, cy)).slice(0, 4);
+        const px = -Math.sin(a), py = Math.cos(a);
+        // la barrera tapa el palo más cercano al balón
+        const near = y < PW / 2 ? -1 : 1; const shift = near * 0.9;
+        this.restart.wall = wall; this.restart.wallPos = wall.map((q, i) => [cx + px * ((i - 1.5) * 0.62 + shift), cy + py * ((i - 1.5) * 0.62 + shift)]);
+        this.say('wallset', { side: 1 - side });
+        wall.forEach((q, i) => { q.x = this.restart.wallPos[i][0]; q.y = this.restart.wallPos[i][1]; q.tx = q.x; q.ty = q.y; q.vx = q.vy = 0; q.face = a + Math.PI; });
+      }
+    }
     // los rivales a distancia reglamentaria en faltas
     if (type === 'free' || type === 'corner' || type === 'goalkick') {
       this.active(1 - side).forEach((p) => {
         const d = U.dist(p.x, p.y, x, y);
-        if (d < 9.15 && !p.isGK) { const a = Math.atan2(p.y - y, p.x - x); p.x = x + Math.cos(a) * 9.4; p.y = y + Math.sin(a) * 9.4; }
+        if (d < 9.15 && !p.isGK && !(this.restart.wall && this.restart.wall.indexOf(p) >= 0)) { const a = Math.atan2(p.y - y, p.x - x); p.x = x + Math.cos(a) * 9.4; p.y = y + Math.sin(a) * 9.4; }
       });
     }
     b.owner = taker;
@@ -405,6 +429,12 @@
         return [gx - this.dir[rs.side] * (3 + k * 1.3), PW / 2 + (k - 4) * 2.2];
       }
     }
+    if (rs.type === 'goalkick' && !att) {
+      // el rival no puede estar dentro del área en un saque de meta
+      if (this.inBox(rs.side, tx, ty) || this.ax(rs.side, tx) < 0.19 && Math.abs(ty - PW / 2) < 22) return [this.wx(rs.side, 0.2 + (U.hash(p.d.name) % 5) * 0.012), ty];
+      return [tx, ty];
+    }
+    if (rs.type === 'free' && rs.wall && rs.wall.indexOf(p) >= 0) return rs.wallPos[rs.wall.indexOf(p)];
     if (rs.type === 'penalty') {
       if (p.isGK) return [p.x, p.y];
       const bx = this.ownGoalX(1 - rs.side) + this.dir[1 - rs.side] * 20;
@@ -564,7 +594,7 @@
     const pas = p.a.pas; const press = this.pressureOn(p);
     const d = U.dist(p.x, p.y, tx, ty);
     // pases más precisos: el error depende sobre todo del pase del jugador y de la presión
-    const err = (0.012 + U.clamp(1 - pas / 100, 0, 1) * 0.045 + (press < 1.5 ? 0.025 : 0)) * this.R.normal();
+    const err = (0.012 + U.clamp(1 - pas / 100, 0, 1) * 0.045 + (press < 1.5 ? 0.025 : 0)) * (1 + Math.max(0, 0.7 - p.stam) * 0.9) * this.R.normal();
     const a = Math.atan2(ty - p.y, tx - p.x) + err;
     const dd = d * (1 + this.R.normal() * (0.02 + U.clamp(1 - pas / 100, 0, 1) * 0.04));
     p.st.pass++;
@@ -607,7 +637,7 @@
     if (aimY !== undefined && aimY !== null) ty = PW / 2 + aimY * (GOAL_W / 2 - 0.3);
     else { const far = gk && gk.y < PW / 2 ? 1 : -1; ty = PW / 2 + far * (1.6 + this.R() * 1.8); }
     const press = this.pressureOn(p);
-    const sigma = (0.9 + d * 0.085) * (1.45 - tir / 100) * (press < 1.3 ? 1.35 : 1) * (power > 0.9 ? 1.25 : 1) * (precise ? 0.45 : 1);
+    const sigma = (0.9 + d * 0.085) * (1.45 - tir / 100) * (press < 1.3 ? 1.35 : 1) * (power > 0.9 ? 1.25 : 1) * (precise ? 0.45 : 1) * (1 + Math.max(0, 0.7 - p.stam) * 0.8);
     ty += this.R.normal() * sigma;
     const speed = (19 + tir / 100 * 9) * (power ? 0.75 + power * 0.4 : 1) + this.R() * 2;
     const a = Math.atan2(ty - p.y, gx - p.x);
@@ -947,6 +977,13 @@
     return (this.L[s].bench || []).filter((id) => !used.has(id)).map((id) => this.w.players[id]).filter(Boolean);
   };
 
+  // recalcula la ventaja táctica tras un cambio de táctica o de jugadores
+  MP.retune = function () {
+    const L = [0, 1].map((s) => ({ formation: this.L[s].formation, xi: this.P[s].map((p) => (p.off ? null : p.d.id)) }));
+    this.edge = MF.SIM.tacticEdge(this.w, L, this.tac);
+    this.P.forEach((arr, s) => arr.forEach((p) => { p.a = this.makeMP(p.d, s, p.slot).a; }));
+  };
+
   MP.substitute = function (s, out, inId) {
     if (this.subsLeft[s] <= 0 || out.off) return false;
     const bench = this.benchAvail(s);
@@ -968,6 +1005,7 @@
     this._lastSub = this._lastSub || [0, 0]; this._lastSub[s] = this.t;
     this.events.push({ type: 'sub', side: s, min: this.minute(), pid: inP.id, out: out.d.id });
     this.say('sub', { side: s, pid: inP.id, out: out.d.id });
+    this.retune();
     return true;
   };
 
@@ -1001,7 +1039,8 @@
       else if (b) p.face = Math.atan2(b.y - p.y, b.x - p.x);
       p.anim += sp * dt * 2.4; p.run = sp;
       // cansancio
-      if (!calm) p.stam = Math.max(0.15, p.stam - dt * this.minPerSec * (sp > 5.5 ? 0.0105 : 0.0032) * (1.35 - p.a.res / 100) * (this.tac[s].press === 'alta' ? 1.12 : 1));
+      // desgaste según el esfuerzo (sprints, presión) y la resistencia del jugador
+      if (!calm) p.stam = Math.max(0.15, p.stam - dt * this.minPerSec * (sp > 5.5 ? 0.0115 : sp > 2.5 ? 0.0045 : 0.0022) * (1.4 - p.a.res / 100) * (this.tac[s].press === 'alta' ? 1.15 : this.tac[s].press === 'baja' ? 0.9 : 1) * (this.cfg.drainMul ? this.cfg.drainMul[s] : 1));
     }
     // árbitro
     const r = this.ref; const ra = Math.atan2(b.y - r.y, b.x - r.x);
@@ -1266,7 +1305,7 @@
       if (d < 28 && Math.abs(rs.y - PW / 2) < 18 && this.R() < 0.6) {
         const shooter = this.active(s).filter((q) => !q.isGK).sort((a, c) => c.a.tir - a.a.tir)[0];
         if (shooter && shooter !== p) { b.owner = shooter; shooter.x = rs.x - this.dir[s] * 0.7; shooter.y = rs.y; }
-        this.shoot(b.owner, null, 0.9); return;
+        this.shoot(b.owner, null, 0.9); this.wallCheck(rs); return;
       }
     }
     if (rs.type === 'goalkick' && s === this.human && p.isGK) { this.ctrl = p; p.gkHold = 0; return; }
@@ -1278,6 +1317,21 @@
     const bp = this.bestPass(p);
     if (bp) this.pass(p, bp.r, bp.tx, bp.ty, rs.type === 'throw' ? false : bp.loft);
     else this.longBall(p);
+  };
+
+  // Tiro directo de falta contra la barrera: puede rebotar en ella; si la supera, sale más alto (más difícil de ajustar)
+  MP.wallCheck = function (rs) {
+    const b = this.ball; if (!rs || !rs.wall || !rs.wall.length || b.type !== 'shot') return;
+    const sh = b.last || rs.taker;
+    const q = sh && sh.a ? sh.a.tir : 75;
+    if (this.R() < 0.34 - (q - 70) * 0.006) {
+      // rebote en la barrera
+      const w = rs.wall[Math.floor(this.R() * rs.wall.length)];
+      b.x = w.x - Math.cos(Math.atan2(b.vy, b.vx)) * 0.6; b.y = w.y - Math.sin(Math.atan2(b.vy, b.vx)) * 0.6;
+      const sp = Math.hypot(b.vx, b.vy) * (0.25 + this.R() * 0.25); const a = Math.atan2(b.vy, b.vx) + Math.PI + (this.R() - 0.5) * 2.2;
+      b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp; b.vz = 1 + this.R() * 3; b.z = 1.6; b.type = null; b.target = null;
+      this.say('wall', { side: 1 - rs.side, pid: w.d.id });
+    } else { b.vz = Math.min(9.5, b.vz + 1.2); }
   };
 
   // --------- resultado en el mismo formato que la simulación rápida
@@ -1309,7 +1363,7 @@
     const lh = { formation: this.L[0].formation, xi: this.P[0].map((p) => (p.off ? null : p.d.id)) };
     const la = { formation: this.L[1].formation, xi: this.P[1].map((p) => (p.off ? null : p.d.id)) };
     lh.xi = lh.xi.map((x) => x); la.xi = la.xi.map((x) => x);
-    const res = MF.SIM.play(this.w, { home: this.cfg.home, away: this.cfg.away, lhome: lh, laway: la, neutral: this.neutral, rng: this.R, fromMinute: min, base: partial });
+    const res = MF.SIM.play(this.w, { home: this.cfg.home, away: this.cfg.away, lhome: lh, laway: la, thome: this.tac[0], taway: this.tac[1], neutral: this.neutral, rng: this.R, fromMinute: min, base: partial, autoSubs: [false, false] });
     res.subsIn = this.subsIn.map((a) => a.slice());
     res.fatigue = {}; this.P.forEach((arr) => arr.forEach((p) => { res.fatigue[p.d.id] = Math.max(0.3, p.stam - 0.1); }));
     this.score = res.score.slice(); this.events = res.events; this.phase = 'end';

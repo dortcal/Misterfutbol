@@ -39,7 +39,8 @@
     this.ox = this.W / 2; this.oy = this.H / 2;
     if (this.camera === 'total') {
       // vista cenital total (como en PC Fútbol 2.0): todo el campo a la vista y cámara fija
-      const top = 54, bottom = this.rot && this.opts.touch ? 210 : 0;
+      // en vertical deja una franja abajo para la narración (o los mandos táctiles) y no tapar la portería
+      const top = 54, bottom = this.rot ? (this.opts.touch ? 210 : 58) : 0;
       const availAcross = this.rot ? this.W : this.H - top, availAlong = this.rot ? this.H - top - bottom : this.W;
       this.S = Math.max(2, Math.min(availAcross / (PW + 6), availAlong / (PL + 8)));
       this.oy = top + (this.H - top - bottom) / 2;

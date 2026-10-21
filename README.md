@@ -5,11 +5,15 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
 ## Modos de juego
 
 - **Partido amistoso**: elige dos equipos de Primera, Segunda o la bolsa de Primera RFEF y decide cómo vivir el partido:
-  - **Jugar**: controlas a tu equipo (teclado o mandos táctiles).
   - **Visionado**: ves el partido simulado en tiempo real (x1, x2 o x4), con cambios y táctica durante el partido.
-  - **Resultado**: marcador final al instante con el teletipo del partido.
+  - **Resultado**: teletipo minuto a minuto que puedes pausar para cambiar la táctica y hacer sustituciones, o dejar que dirija el segundo entrenador.
+  - El modo **Jugar** está desactivado temporalmente (se reactiva con `UI.PLAY_ENABLED = true` en `js/ui.js`).
 - **Liga Manager**: dirige a un club durante varias temporadas.
-  - Alineación (6 sistemas), estilo, presión y tipo de pase.
+  - Alineación (6 sistemas), estilo, presión y tipo de pase. **No hay táctica ideal**: cada opción rinde según los atributos de tus jugadores y los del rival (centro del campo, bandas, velocidad de delanteros y defensas, calidad de pase, resistencia). El segundo entrenador da un informe antes de cada partido.
+  - **Personal del club** (1 a 5 estrellas, con caras y nombres divertidos): segundo entrenador, recuperador de lesiones, preparador físico, psicólogo, director deportivo, director de marketing y entrenador de cantera. Se pueden despedir y contratar en el mercado libre.
+  - **Competiciones internacionales**: Champions, Europa League y Conference League con el formato actual (fase de liga de 36 equipos, previa 9º-24º, eliminatorias a doble partido y final en campo neutral), Supercopa de Europa, Copa Intercontinental de la FIFA y Mundial de Clubes (2029 y cada cuatro años). 130 clubes extranjeros no seleccionables.
+  - Cansancio durante el partido (los jugadores cansados corren menos y fallan más), barrera de cuatro jugadores en las faltas cercanas y rivales fuera del área en los saques de meta.
+  - Los veteranos anuncian su retirada durante la temporada y ya no se pueden traspasar. Los filiales no fichan ni pueden subir a Primera.
   - Plantilla y **mercado abierto toda la temporada**: Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1, Liga Portugal, Saudi Pro League, MLS, Süper Lig). Ofertas recibidas y venta de jugadores.
   - **Copa del Rey** entre semana con Primera, Segunda (sin filiales) y Primera RFEF: partido único en el campo del equipo con peor media de plantilla, prórroga y penaltis si hay empate, y final en campo neutral (estadio del club más potente de Primera que no la juega).
   - Entrenamiento semanal, finanzas (taquilla, TV, salarios, precio de la entrada), cantera.
@@ -62,6 +66,8 @@ js/data/teams.js      58 clubes (+8 grupos «otras ligas»): nombre, estadio, af
 js/data/players.js    1.553 jugadores: dorsal, demarcación, media, edad, tono de piel y atributos
 js/util.js            utilidades
 js/achievements.js    sistema de logros
+js/europe.js          Champions, Europa League, Conference, Supercopa, Intercontinental y Mundial de Clubes
+js/data/world.js      130 clubes extranjeros: figuras reales y resto de la plantilla generado
 js/db.js              formaciones, alineación automática, valor y salario de los jugadores
 js/sim.js             simulación rápida (modo Resultado y resto de partidos de la jornada)
 js/match.js           motor del partido en tiempo real (física, IA, faltas, fuera de juego, saques)
@@ -80,7 +86,7 @@ js/ui.js, matchui.js, manager.js, main.js   pantallas
 ## Datos y avisos
 
 - Plantillas de Primera y de la bolsa de Primera RFEF obtenidas de las listas públicas de cada club en Wikipedia; plantillas de Segunda (19 clubes, entre ellos el Real Valladolid) revisadas en octubre de 2026 con las listas publicadas por la prensa deportiva. Granada, Real Sociedad B y Celta Fortuna mantienen la lista de Wikipedia. Si a algún club le faltaban jugadores, se completó con canteranos generados.
-- Jugadores de otras ligas: selección de figuras con su club a octubre de 2026; aparecen agrupados por liga en el mercado.
+- Clubes extranjeros: participantes reales de la fase de liga 2026/27 según los sorteos de UEFA (agosto de 2026), más otros grandes clubes y campeones de otras confederaciones. Solo sus figuras son reales; el resto de cada plantilla lo genera el juego y aparece como «generado». Finales 2027: Champions en el Metropolitano (Madrid), Europa League en Fráncfort y Conference en Estambul. La Supercopa de Europa 2026 (PSG 2-1 Aston Villa) se muestra con su resultado real.
 - Las **medias son estimaciones** basadas en el nivel y el rendimiento reciente de cada jugador; los equipos más potentes tienen mejores jugadores. El tono de piel es aproximado y se puede corregir en `players.js`.
 - Escudos, equipaciones, gráficos, música y efectos son **originales y generados por código**; no se usan escudos oficiales ni material de otros juegos. Los nombres de clubes y jugadores se usan solo para identificarlos.
 - Proyecto de aficionados sin relación con LaLiga, la RFEF ni los clubes.

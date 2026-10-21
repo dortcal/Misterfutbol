@@ -50,39 +50,51 @@
     s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
   }
 
-  // ---------- Música del menú (composición original, 16 compases en La menor)
-  const CH = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62], [57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62],
-    [53, 57, 60], [55, 59, 62], [52, 55, 59], [57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 56, 59], [57, 60, 64]];
-  const BASS = [45, 41, 48, 43, 45, 41, 48, 43, 41, 43, 40, 45, 41, 43, 40, 45];
+  // ---------- Música del menú: himno original, pegadizo y alegre (Re mayor, 140 ppm, 16 compases)
+  // Estructura: estribillo A (4) · A' (4) · puente B (4) · estribillo final (4). Composición propia.
+  const D = [62, 66, 69], Aa = [61, 64, 69], Bm = [62, 66, 71], Gg = [62, 67, 71], Em = [64, 67, 71];
+  const CH = [D, Aa, Bm, Gg, D, Aa, Gg, Aa, Bm, Gg, Em, Aa, D, Aa, Gg, D];
+  const BASS = [38, 33, 35, 31, 38, 33, 31, 33, 35, 31, 40, 33, 38, 33, 31, 38];
+  const HOOK1 = [[78, 1], [78, 1], [81, 2], [78, 1], [76, 1], [74, 2]], HOOK2 = [[76, 1], [76, 1], [78, 1], [76, 1], [73, 2], [69, 2]];
   const LEAD = [
-    [[76, 2], [81, 2], [79, 1], [76, 1], [72, 2]], [[74, 1], [72, 1], [69, 2], [72, 2], [74, 2]], [[76, 2], [79, 2], [84, 3], [83, 1]], [[83, 2], [81, 1], [79, 1], [74, 4]],
-    [[76, 1], [76, 1], [81, 2], [83, 1], [84, 1], [83, 2]], [[81, 2], [77, 2], [81, 2], [84, 2]], [[79, 3], [76, 1], [79, 2], [84, 2]], [[83, 2], [86, 2], [83, 2], [79, 2]],
-    [[81, 4], [84, 2], [81, 2]], [[83, 4], [86, 2], [83, 2]], [[79, 2], [76, 2], [83, 2], [79, 2]], [[81, 6], [76, 2]],
-    [[77, 2], [81, 2], [84, 2], [89, 2]], [[86, 2], [83, 2], [79, 2], [86, 2]], [[80, 2], [83, 2], [88, 2], [86, 2]], [[84, 2], [83, 1], [80, 1], [81, 4]],
+    HOOK1, HOOK2, [[71, 1], [74, 1], [78, 2], [76, 1], [74, 1], [73, 1], [74, 1]], [[76, 3], [74, 1], [71, 4]],
+    HOOK1, HOOK2, [[71, 1], [74, 1], [79, 2], [78, 1], [76, 1], [74, 2]], [[76, 2], [78, 2], [73, 4]],
+    [[83, 2], [81, 1], [78, 1], [81, 2], [78, 2]], [[79, 2], [78, 1], [76, 1], [74, 4]], [[76, 1], [79, 1], [83, 2], [81, 1], [79, 1], [76, 2]], [[81, 2], [83, 1], [85, 1], [88, 4]],
+    HOOK1, HOOK2, [[79, 1], [78, 1], [76, 1], [78, 1], [81, 2], [83, 2]], [[86, 3], [81, 1], [86, 4]],
   ];
   A.startMusic = function () {
     if (!A.init() || A.playing) return;
     A.playing = true;
-    const c = A.ctx; const bpm = 132; const e = 60 / bpm / 2; // corchea
-    let bar = 0, t0 = c.currentTime + 0.1;
+    const c = A.ctx; const bpm = 140; const e = 60 / bpm / 2; // corchea
+    let bar = 0; const t0 = c.currentTime + 0.1;
     A._next = t0;
     const scheduleBar = (t, b) => {
-      const ch = CH[b % 16];
-      // batería
+      const k = b % 16; const ch = CH[k]; const intro = A._loops === 0 && b < 2;
+      // batería: bombo a negras, caja en 2 y 4, charles a semicorcheas
       for (let i = 0; i < 8; i++) {
         const tt = t + i * e;
-        if (i % 4 === 0) tone('sine', 150, tt, 0.12, 0.55, A.mus, { slide: 45, r: 0.05 });
-        if (i % 4 === 2) noiseHit(tt, 0.13, 0.32, 1500, 9000, A.mus);
-        noiseHit(tt, 0.03, i % 2 ? 0.06 : 0.1, 7000, 14000, A.mus);
+        if (i % 2 === 0) tone('sine', 140, tt, 0.13, 0.6, A.mus, { slide: 42, r: 0.05 });
+        if (i % 4 === 2 && !intro) noiseHit(tt, 0.15, 0.34, 1400, 9000, A.mus);
+        noiseHit(tt, 0.025, 0.05, 8000, 15000, A.mus); noiseHit(tt + e / 2, 0.02, 0.035, 8000, 15000, A.mus);
       }
-      // bajo
-      for (let i = 0; i < 8; i++) tone('triangle', mtof(BASS[b % 16] + (i % 2 ? 12 : 0)), t + i * e, e * 0.9, 0.32, A.mus, { r: 0.04, sus: 0.8 });
-      // arpegio
-      for (let i = 0; i < 16; i++) tone('square', mtof(ch[i % 3] + 12 + (i % 6 > 2 ? 12 : 0)), t + i * e / 2, e / 2 * 0.8, 0.035, A.mus, { r: 0.03, lp: 3200 });
-      // melodía (las 8 primeras vueltas sin melodía en el primer pase de 4 compases para una intro)
-      if (b >= 4 || A._loops > 0) {
+      if (k === 11 || k === 15) for (let i = 0; i < 4; i++) noiseHit(t + 6 * e + i * e / 2, 0.08, 0.18 + i * 0.04, 900, 6000, A.mus);   // redoble
+      // bajo en octavas, muy de los 90
+      for (let i = 0; i < 8; i++) tone('sawtooth', mtof(BASS[k] + (i % 2 ? 12 : 0)), t + i * e, e * 0.85, 0.12, A.mus, { r: 0.04, sus: 0.7, lp: 900 });
+      // acordes a contratiempo
+      for (let i = 1; i < 8; i += 2) ch.forEach((n) => tone('square', mtof(n), t + i * e, e * 0.45, 0.022, A.mus, { r: 0.03, lp: 2400 }));
+      // arpegio brillante de fondo
+      for (let i = 0; i < 16; i++) tone('triangle', mtof(ch[i % 3] + 12 + (i % 8 > 3 ? 12 : 0)), t + i * e / 2, e / 2 * 0.7, 0.03, A.mus, { r: 0.02 });
+      // melodía principal con eco
+      if (!intro) {
         let tt = t;
-        LEAD[b % 16].forEach(([n, l]) => { if (n) tone('square', mtof(n), tt, l * e * 0.92, 0.075, A.mus, { vib: true, lp: 2600, sus: 0.7 }); tt += l * e; });
+        LEAD[k].forEach(([n, l]) => {
+          if (n) {
+            tone('square', mtof(n), tt, l * e * 0.9, 0.07, A.mus, { vib: l >= 3, lp: 3000, sus: 0.75 });
+            tone('square', mtof(n), tt + e * 1.5, l * e * 0.7, 0.022, A.mus, { lp: 1800, sus: 0.6 });   // eco
+            if (k >= 12) tone('triangle', mtof(n - 12), tt, l * e * 0.9, 0.05, A.mus, { sus: 0.7 });   // refuerzo en el estribillo final
+          }
+          tt += l * e;
+        });
       }
     };
     A._loops = 0;

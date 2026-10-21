@@ -100,6 +100,42 @@
     const url = c.toDataURL(); cache[key] = url; return url;
   };
 
+  // Caras caricaturizadas para el personal del club (cabeza grande, gafas, bigote, gorra…)
+  const ROLE_COL = { segundo: '#2b4c9b', fisio: '#e8e8e8', fisico: '#d9480f', psico: '#7b2cbf', dirdep: '#20262d', marketing: '#c2185b', cantera: '#2f9e44' };
+  GFX.staffFace = function (x, size) {
+    size = size || 56;
+    const key = 'st' + x.id + size; if (cache[key]) return cache[key];
+    const c = document.createElement('canvas'); c.width = size; c.height = size; const g = c.getContext('2d'); const S = size;
+    const skin = MF.SKIN[x.tone] || MF.SKIN[1]; const hairC = MF.HAIR[x.hair] || '#3b2a1d';
+    // fondo y ropa
+    g.fillStyle = '#cfd6dc'; g.fillRect(0, 0, S, S);
+    g.fillStyle = ROLE_COL[x.role] || '#555'; g.beginPath(); g.ellipse(S / 2, S * 1.05, S * .48, S * .32, 0, 0, 7); g.fill();
+    if (x.role === 'dirdep') { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(S * .44, S * .74); g.lineTo(S * .5, S * .9); g.lineTo(S * .56, S * .74); g.fill(); g.fillStyle = '#b3001b'; g.fillRect(S * .485, S * .76, S * .03, S * .14); }
+    if (x.role === 'fisio') { g.fillStyle = '#d22'; g.fillRect(S * .64, S * .82, S * .1, S * .03); g.fillRect(S * .675, S * .785, S * .03, S * .1); }
+    // cuello y cabeza grande
+    g.fillStyle = skin; g.fillRect(S * .43, S * .62, S * .14, S * .12);
+    g.beginPath(); g.ellipse(S / 2, S * .42, S * .27, S * .3, 0, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(S * .23, S * .45, S * .045, S * .07, 0, 0, 7); g.ellipse(S * .77, S * .45, S * .045, S * .07, 0, 0, 7); g.fill();
+    // pelo
+    g.fillStyle = hairC;
+    if (x.bald) { g.fillRect(S * .23, S * .34, S * .05, S * .1); g.fillRect(S * .72, S * .34, S * .05, S * .1); }
+    else if (x.hair === 5) { g.beginPath(); for (let i = 0; i < 7; i++) g.arc(S * (.27 + i * .077), S * .17, S * .06, 0, 7); g.fill(); }
+    else { g.beginPath(); g.ellipse(S / 2, S * .22, S * .27, S * .14, 0, Math.PI, 0); g.fill(); g.fillRect(S * .23, S * .2, S * .06, S * .17); g.fillRect(S * .71, S * .2, S * .06, S * .17); if (x.hair >= 3) { g.fillRect(S * .23, S * .2, S * .54, S * .07); } }
+    if (x.cap) { g.fillStyle = ROLE_COL[x.role] || '#333'; g.beginPath(); g.ellipse(S / 2, S * .2, S * .28, S * .12, 0, Math.PI, 0); g.fill(); g.fillRect(S * .45, S * .18, S * .36, S * .05); }
+    // ojos, cejas y boca
+    g.fillStyle = '#1d1d1d';
+    g.beginPath(); g.arc(S * .4, S * .42, S * .03, 0, 7); g.arc(S * .6, S * .42, S * .03, 0, 7); g.fill();
+    g.lineWidth = Math.max(1, S * .025); g.strokeStyle = hairC; g.beginPath(); g.moveTo(S * .34, S * .35); g.lineTo(S * .45, S * .36); g.moveTo(S * .55, S * .36); g.lineTo(S * .66, S * .35); g.stroke();
+    if (x.glasses) { g.strokeStyle = '#111'; g.lineWidth = Math.max(1, S * .02); g.beginPath(); g.arc(S * .4, S * .42, S * .07, 0, 7); g.moveTo(S * .67, S * .42); g.arc(S * .6, S * .42, S * .07, 0, 7); g.moveTo(S * .47, S * .42); g.lineTo(S * .53, S * .42); g.stroke(); }
+    g.fillStyle = MF.shade ? MF.shade(skin, -0.25) : '#a66'; g.beginPath(); g.ellipse(S / 2, S * .5, S * .035, S * .05, 0, 0, 7); g.fill();
+    if (x.beard === 1) { g.fillStyle = hairC; g.fillRect(S * .4, S * .555, S * .2, S * .035); }
+    if (x.beard === 2) { g.fillStyle = hairC; g.beginPath(); g.ellipse(S / 2, S * .62, S * .2, S * .1, 0, 0, Math.PI); g.fill(); }
+    g.strokeStyle = '#5a1f1f'; g.lineWidth = Math.max(1, S * .025); g.beginPath();
+    if (x.smile) g.arc(S / 2, S * .56, S * .07, 0.2, Math.PI - 0.2); else { g.moveTo(S * .44, S * .6); g.lineTo(S * .56, S * .6); }
+    g.stroke();
+    const url = c.toDataURL(); cache[key] = url; return url;
+  };
+
   // Elige equipaciones que no choquen
   GFX.pickKits = function (th, ta) {
     const h = th.kit.home;
