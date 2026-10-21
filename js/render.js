@@ -238,15 +238,19 @@
   };
 
   RP.drawGoals = function (g) {
-    // postes y larguero por encima de todo (con sombra)
+    // portería: postes en la línea de gol (y = GY1 y GY2) y red de 2,2 m hacia fuera del campo
+    const y1 = Match.GY1, y2 = Match.GY2, depth = 2.2, w = 0.14;
     [0, PL].forEach((gx) => {
-      const d = gx === 0 ? -1 : 1;
-      g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(gx + 0.5 + (d > 0 ? 0 : -0.15), PW / 2 - 3.66 + 0.6, 0.15, 7.32);
+      const out = gx === 0 ? -1 : 1; // hacia fuera del campo
+      const back = gx + out * depth;
+      // sombra del larguero (proyectada hacia el campo)
+      g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(Math.min(gx, gx - out * 0.6), y1 + 0.5, 0.6, y2 - y1);
       g.fillStyle = '#ffffff';
-      g.fillRect(gx - 0.08, PW / 2 - 3.74, 0.16, 7.48);
-      g.fillRect(gx - 0.1, PW / 2 - 3.8, 0.2 + 2.2 * (d > 0 ? 1 : 0) - (d > 0 ? 0 : 0), 0.12);
-      g.fillRect(gx - 0.1 + (d < 0 ? -2.2 : 0), PW / 2 - 3.8, 2.3, 0.12);
-      g.fillRect(gx - 0.1 + (d < 0 ? -2.2 : 0), PW / 2 + 3.68, 2.3, 0.12);
+      g.fillRect(gx - w / 2, y1 - w / 2, w, y2 - y1 + w); // larguero sobre la línea de gol
+      g.fillRect(Math.min(gx, back), y1 - w / 2, depth, w); // lateral de la red
+      g.fillRect(Math.min(gx, back), y2 - w / 2, depth, w);
+      g.fillStyle = 'rgba(255,255,255,0.55)'; g.fillRect(back - 0.04, y1, 0.08, y2 - y1); // fondo de la red
+      g.fillStyle = '#e8e8e8'; [y1, y2].forEach((y) => { g.beginPath(); g.arc(gx, y, 0.13, 0, 7); g.fill(); }); // postes
     });
   };
 
@@ -270,7 +274,8 @@
     this.crowdFrame += dt * (m.phase === 'goal' ? 9 : 1 + m.excite * 3);
     const cf = this.crowd[(this.crowdFrame | 0) % 2];
     g.drawImage(cf, WX0, WY0, WX1 - WX0, WY1 - WY0);
-    g.drawImage(this.pitch, -7 * PS, -6 * PS, (PL + 14) * PS, (PW + 12) * PS, -7, -6, PL + 14, PW + 12);
+    // el lienzo del césped empieza en (WX0, WY0): se recorta la zona de juego (-7..PL+7, -6..PW+6) con su desplazamiento real
+    g.drawImage(this.pitch, (-7 - WX0) * PS, (-6 - WY0) * PS, (PL + 14) * PS, (PW + 12) * PS, -7, -6, PL + 14, PW + 12);
     // jugadores ordenados por profundidad
     const list = [];
     for (let s = 0; s < 2; s++) for (const p of m.P[s]) if (!p.off) list.push(p);

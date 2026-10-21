@@ -81,8 +81,8 @@
       human: cfg.human, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: false, waitHalftime: true,
       manualSubs: cfg.userSide !== undefined && !S.autoSubs ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
     });
-    MUI.m = m;
-    const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather });
+    MUI.m = m; MUI.R = null;
+    const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather }); MUI.R = R;
     if (radar && R.rot) { radar.width = 72; radar.height = 110; }
     let speed = 1, paused = false, ended = false, last = performance.now(), acc = 0, raf = 0, frame = 0, tickT = 0, banT = 0;
     const ban = root.querySelector('#ban'); const tick = root.querySelector('#tick');
