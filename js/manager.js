@@ -1,0 +1,390 @@
+/* MÍSTER FÚTBOL 26·27 — pantallas de LIGA MANAGER */
+(function (G) {
+  'use strict';
+  const MF = G.MF; const U = MF.U; const DB = MF.DB; const GFX = MF.GFX; const LG = MF.LG; const UI = MF.UI; const A = MF.Audio;
+  const esc = U.esc;
+  const MGR = { st: null, slot: 1 };
+  const T = (id) => MGR.st.world.teams[id];
+  const save = () => { if (MGR.st && !LG.save(MGR.st, MGR.slot)) UI.toast('No se ha podido guardar (almacenamiento lleno o bloqueado).'); };
+  const divName = (d) => (d === 1 ? 'Primera División' : d === 2 ? 'Segunda División' : 'Primera RFEF');
+
+  // ---------- partidas guardadas
+  MGR.start = function () {
+    UI.wantMusic = true;
+    const slots = [1, 2, 3].map((k) => [k, LG.slotInfo(k)]);
+    UI.show(UI.head('Liga Manager', 'Elige una partida o empieza una nueva', 'menu') + '<div class="wrap"><nav class="menu" style="max-width:none">' +
+      slots.map(([k, s]) => s ?
+        '<button class="bar" data-act="load" data-k="' + k + '" data-key="' + k + '"><span class="n">' + k + '</span><span class="t">' + esc(s.team) + '</span><span class="meta">' + s.season + ' · ' + divName(s.div) + ' · Jornada ' + Math.min(s.day + 1, 46) + '</span></button>' :
+        '<button class="bar grey" data-act="new" data-k="' + k + '" data-key="' + k + '"><span class="n">' + k + '</span><span class="t">Partida vacía</span><span class="meta">Nueva partida</span></button>').join('') +
+      '</nav><div class="panel"><h3>Copias de seguridad</h3><p class="muted" style="margin-top:0">Las partidas se guardan automáticamente en este navegador después de cada jornada.</p><div class="row">' +
+      slots.filter(([, s]) => s).map(([k]) => '<button class="btn alt" data-act="export" data-k="' + k + '">Exportar partida ' + k + '</button><button class="btn warn" data-act="del" data-k="' + k + '">Borrar ' + k + '</button>').join('') +
+      '<label class="btn alt" style="cursor:pointer">Importar partida<input type="file" accept=".json,application/json" data-chg="import" hidden></label></div></div></div>',
+      {
+        load: (el) => { const st = LG.load(+el.dataset.k); if (!st) { UI.toast('No se ha podido cargar la partida.'); return; } MGR.st = st; MGR.slot = +el.dataset.k; MGR.route(); },
+        new: (el) => { MGR.slot = +el.dataset.k; MGR.newGame(1); },
+        del: (el) => UI.confirm('¿Borrar la partida ' + el.dataset.k + '?', 'Borrar', () => { U.store.del(LG.SAVE_KEY + el.dataset.k); MGR.start(); }, true),
+        export: (el) => {
+          const data = JSON.stringify(LG.load(+el.dataset.k));
+          try {
+            const blob = new Blob([data], { type: 'application/json' }); const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob); a.download = 'mister-futbol-partida-' + el.dataset.k + '.json'; document.body.appendChild(a); a.click(); a.remove();
+            UI.toast('Partida exportada.');
+          } catch (e) { UI.toast('Tu navegador no permite descargar el archivo.'); }
+        },
+        import: (el) => {
+          const f = el.files && el.files[0]; if (!f) return;
+          const r = new FileReader();
+          r.onload = () => {
+            try {
+              const st = JSON.parse(r.result); if (!st.world || !st.userTeam) throw new Error('formato');
+              const k = [1, 2, 3].find((x) => !LG.slotInfo(x)) || 3;
+              LG.save(st, k); UI.toast('Partida importada en la ranura ' + k + '.'); MGR.start();
+            } catch (e) { UI.toast('El archivo no es una partida válida de Míster Fútbol.'); }
+          };
+          r.readAsText(f);
+        },
+      });
+  };
+
+  // ---------- nueva partida: elegir club
+  MGR.newGame = function (dv, sel) {
+    const w = UI.baseWorld();
+    const ids = Object.values(w.teams).filter((t) => t.div === dv).sort((a, b) => DB.teamStrength(w, b.id) - DB.teamStrength(w, a.id));
+    sel = sel || ids[0].id; const t = w.teams[sel];
+    const best = DB.teamPlayers(w, sel).sort((a, b) => b.ovr - a.ovr).slice(0, 5);
+    UI.show(UI.head('Nueva partida', 'Elige el club que vas a dirigir', 'back') + '<div class="wrap">' +
+      '<div class="tabs">' + [[1, 'Primera'], [2, 'Segunda']].map(([d, l]) => '<button class="tab ' + (d === dv ? 'on' : '') + '" data-act="div" data-d="' + d + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="cols-2"><div class="panel"><div class="teamlist" style="max-height:60vh">' + ids.map((x) => '<button class="tpick ' + (x.id === sel ? 'on' : '') + '" data-act="sel" data-id="' + x.id + '">' + GFX.badgeImg(x, 26) + '<span>' + esc(x.short) + '</span></button>').join('') + '</div></div>' +
+      '<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div class="pcard">' + GFX.badgeImg(t, 72) + '<div><div class="big">' + esc(t.name) + '</div><div>' + UI.stars(DB.teamStrength(w, t.id)) + '</div><div class="muted">' + esc(t.stadium) + ' · ' + t.cap.toLocaleString('es-ES') + ' espectadores</div></div></div>' +
+      '<div class="kv"><b>Presupuesto</b><span>' + U.money(t.budget) + '</span><b>Media del once</b><span>' + DB.teamStrength(w, t.id).toFixed(1) + '</span><b>Plantilla</b><span>' + DB.teamPlayers(w, t.id).length + ' jugadores</span></div>' +
+      '<div><h3>Figuras</h3>' + best.map((p) => '<div>' + UI.ovr(p.ovr) + ' ' + UI.pos(p) + ' ' + esc(p.name) + '</div>').join('') + '</div>' +
+      '<label class="f">Tu nombre de entrenador<input type="text" id="mgrname" maxlength="24" value="' + esc(U.store.get('mf27_name', 'Míster')) + '"></label>' +
+      '<button class="bar gold" data-act="go"><span class="n">▶</span><span class="t">Firmar con el ' + esc(t.short) + '</span></button></div></div></div>',
+      {
+        back: () => MGR.start(), div: (el) => MGR.newGame(+el.dataset.d), sel: (el) => MGR.newGame(dv, el.dataset.id),
+        go: () => {
+          const name = (document.getElementById('mgrname').value || 'Míster').trim().slice(0, 24); U.store.set('mf27_name', name);
+          MGR.st = LG.newCareer({ team: sel, name, difficulty: UI.settings.difficulty });
+          save(); MGR.hub();
+        },
+      });
+  };
+
+  MGR.route = function () {
+    const st = MGR.st;
+    if (st.seasonOver) return MGR.seasonEnd();
+    if (st.fired) return MGR.fired();
+    MGR.hub();
+  };
+
+  // ---------- cabecera común
+  MGR.top = function () {
+    const st = MGR.st; const t = T(st.userTeam);
+    const conf = Math.round(st.board.conf);
+    const pos = LG.position(st, t.id);
+    const rounds = LG.ROUNDS[t.div];
+    return '<div class="panel hub-top">' + GFX.badgeImg(t, 64) + '<div style="min-width:0"><div class="club">' + esc(t.name) + '</div><div class="muted">' + esc(st.userName) + ' · ' + DB.SEASON_LABEL(st.season) + ' · ' + divName(t.div) + ' · Jornada ' + Math.min(st.day + 1, rounds) + '/' + rounds + (pos && st.day > 0 ? ' · ' + pos + 'º' : '') + '</div>' +
+      '<div class="row" style="gap:8px;margin-top:4px"><span class="muted">Directiva</span><span class="meter" title="Confianza ' + conf + '%"><i style="width:' + conf + '%"></i></span><span class="muted">' + conf + '%</span></div></div><div class="money" title="Presupuesto">' + U.money(t.budget) + '</div></div>';
+  };
+
+  // ---------- HUB
+  MGR.hub = function () {
+    const st = MGR.st; UI.wantMusic = true; if (A.ctx && A.on) A.startMusic();
+    if (st.seasonOver) return MGR.seasonEnd();
+    if (st.fired) return MGR.fired();
+    const t = T(st.userTeam); const f = LG.userFixture(st);
+    let next;
+    if (f) {
+      const h = T(f.h), a = T(f.a); const started = st.day > 0 && f.comp !== 'playoff'; const ph = started ? LG.position(st, f.h) : null, pa = started ? LG.position(st, f.a) : null;
+      const tab = h.div <= 2 ? LG.table(st, h.div) : [];
+      const fh = (tab.find((r) => r.id === f.h) || { form: [] }).form, fa = (tab.find((r) => r.id === f.a) || { form: [] }).form;
+      next = '<div class="panel next"><h3>Próximo partido · ' + esc(f.label) + '</h3><div class="vs-card"><div>' + GFX.badgeImg(h, 56) + '<div class="tn">' + esc(h.short) + '</div><div class="muted">' + (ph ? ph + 'º · ' : '') + UI.formHTML(fh) + '</div></div><div class="vs">VS</div><div>' + GFX.badgeImg(a, 56) + '<div class="tn">' + esc(a.short) + '</div><div class="muted">' + (pa ? pa + 'º · ' : '') + UI.formHTML(fa) + '</div></div></div>' +
+        '<div class="muted center">' + esc(h.stadium) + ' · Tu once: ' + DB.lineupRating(st.world, LG.userLineup(st)).toFixed(1) + ' (' + st.lineup.formation + ') · Rival: ' + DB.teamStrength(st.world, f.h === st.userTeam ? f.a : f.h).toFixed(1) + '</div>' +
+        '<div class="grid3"><button class="bar gold small" data-act="play" data-m="jugar" data-key="j"><span class="n">J</span><span class="t">Jugar</span></button><button class="bar small" data-act="play" data-m="visionado" data-key="v"><span class="n">V</span><span class="t">Visionado</span></button><button class="bar small" data-act="play" data-m="resultado" data-key="r"><span class="n">R</span><span class="t">Resultado</span></button></div></div>';
+    } else {
+      next = '<div class="panel next"><h3>Jornada ' + (st.day + 1) + '</h3><p style="margin:0">' + esc(t.short) + ' no juega en esta jornada' + (st.day >= 38 && t.div === 1 ? ': la Primera ha terminado y se completan la Segunda y el playoff de ascenso.' : '.') + '</p>' +
+        '<div class="grid3"><button class="bar small" data-act="simday"><span class="n">»</span><span class="t">Simular jornada</span></button><button class="bar small grey" data-act="simall"><span class="n">⏭</span><span class="t">Hasta final de temporada</span></button></div></div>';
+    }
+    const offers = st.offers.filter((o) => st.world.players[o.pid] && st.world.players[o.pid].team === st.userTeam);
+    const news = st.news.slice(0, 3).map((n) => '<div class="news-item ' + n.type + '">' + esc(n.text) + '</div>').join('');
+    const win = LG.isWindow(st);
+    UI.show(MGR.top() + '<div class="wrap">' + next +
+      (offers.length ? '<div class="panel"><h3>Ofertas recibidas</h3>' + MGR.offersHTML(offers) + '</div>' : '') +
+      '<div class="cols-2"><nav class="menu" style="max-width:none">' +
+      '<button class="bar small" data-act="lineup" data-key="1"><span class="n">1</span><span class="t">Alineación y táctica</span></button>' +
+      '<button class="bar small" data-act="squad" data-key="2"><span class="n">2</span><span class="t">Plantilla</span></button>' +
+      '<button class="bar small" data-act="market" data-key="3"><span class="n">3</span><span class="t">Fichajes</span><span class="meta">' + (win ? 'ABIERTO' : 'CERRADO') + '</span></button>' +
+      '<button class="bar small" data-act="table" data-key="4"><span class="n">4</span><span class="t">Clasificación</span></button>' +
+      '<button class="bar small" data-act="calendar" data-key="5"><span class="n">5</span><span class="t">Calendario y resultados</span></button>' +
+      '<button class="bar small" data-act="stats" data-key="6"><span class="n">6</span><span class="t">Estadísticas</span></button>' +
+      '<button class="bar small" data-act="training" data-key="7"><span class="n">7</span><span class="t">Entrenamiento</span><span class="meta">' + esc(MGR.TRAIN[st.training][0]) + '</span></button>' +
+      '<button class="bar small" data-act="finance" data-key="8"><span class="n">8</span><span class="t">Finanzas</span></button>' +
+      '<button class="bar small" data-act="club" data-key="9"><span class="n">9</span><span class="t">Club, directiva y cantera</span></button>' +
+      '<button class="bar small grey" data-act="quit" data-key="0"><span class="n">0</span><span class="t">Guardar y salir</span></button>' +
+      '</nav><div class="panel"><h3>Noticias</h3>' + (news || '<p class="muted">Sin noticias.</p>') + '<div class="row" style="margin-top:8px"><button class="btn alt" data-act="news">Todas las noticias</button></div></div></div></div>',
+      Object.assign(MGR.offerActs(() => MGR.hub()), {
+        play: (el) => MGR.play(el.dataset.m),
+        simday: () => { const s = LG.playDay(st, null); save(); MGR.dayResults(s); },
+        simall: () => UI.confirm('¿Simular todas las jornadas que quedan hasta el final de la temporada?', 'Simular', () => { let g = 0; while (!st.seasonOver && !st.fired && g++ < 60) { if (LG.userFixture(st)) { LG.playDay(st, null); } else LG.playDay(st, null); } save(); MGR.route(); }),
+        lineup: () => MGR.lineup(), squad: () => MGR.squad(), market: () => MGR.market(), table: () => MGR.table(T(st.userTeam).div), calendar: () => MGR.calendar(), stats: () => MGR.stats(T(st.userTeam).div),
+        training: () => MGR.training(), finance: () => MGR.finance(), club: () => MGR.club(), news: () => MGR.news(), quit: () => { save(); UI.toast('Partida guardada.'); UI.mainMenu(); },
+      }));
+  };
+
+  MGR.offersHTML = function (offers) {
+    const st = MGR.st;
+    return '<div class="tbl-wrap"><table class="tbl"><tbody>' + offers.map((o) => { const p = st.world.players[o.pid]; return '<tr><td>' + GFX.badgeImg(T(o.from), 20) + ' ' + esc(T(o.from).short) + '</td><td>' + esc(p.name) + ' ' + UI.ovr(p.ovr) + '</td><td class="num"><b>' + U.money(o.amount) + '</b> <span class="muted hide-sm">(valor ' + U.money(p.value) + ')</span></td><td><button class="btn" data-act="oacc" data-id="' + o.id + '">Aceptar</button> <button class="btn alt" data-act="orej" data-id="' + o.id + '">Rechazar</button></td></tr>'; }).join('') + '</tbody></table></div>';
+  };
+  MGR.offerActs = function (refresh) {
+    const st = MGR.st;
+    return {
+      oacc: (el) => { const r = LG.acceptOffer(st, el.dataset.id); UI.toast(r.msg); save(); refresh(); },
+      orej: (el) => { st.offers = st.offers.filter((o) => o.id !== el.dataset.id); save(); refresh(); },
+    };
+  };
+
+  // ---------- jugar la jornada
+  MGR.play = function (mode) {
+    const st = MGR.st; const f = LG.userFixture(st); if (!f) return;
+    const w = st.world; const userSide = f.h === st.userTeam ? 0 : 1;
+    const lh = LG.lineupFor(st, f.h), la = LG.lineupFor(st, f.a);
+    const R = U.rng(st.season * 100 + st.day);
+    const weather = R() < 0.12 ? 'lluvia' : R() < 0.45 ? 'noche' : 'dia';
+    MF.MUI.start({
+      world: w, home: f.h, away: f.a, lhome: lh, laway: la, thome: LG.tacticsFor(st, f.h), taway: LG.tacticsFor(st, f.a),
+      mode, human: mode === 'jugar' ? userSide : -1, userSide, weather, label: f.label, manager: true,
+      onEnd: (res) => { const s = LG.playDay(st, res); save(); MGR.dayResults(s); },
+      onTactics: (t) => { st.tactics = Object.assign({}, t); },
+    });
+  };
+
+  MGR.dayResults = function (summary) {
+    const st = MGR.st; if (!summary) return MGR.route();
+    const myDiv = T(st.userTeam).div;
+    const sec = (title, list) => '<div class="panel"><h3>' + title + '</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + list.map(({ f, res }) => {
+      const me = f.h === st.userTeam || f.a === st.userTeam;
+      const g = res.events.filter((e) => e.type === 'goal');
+      return '<tr class="' + (me ? 'me' : '') + '"><td>' + GFX.badgeImg(T(f.h), 18) + ' ' + esc(T(f.h).short) + '</td><td class="c"><b>' + res.score[0] + ' - ' + res.score[1] + '</b></td><td>' + GFX.badgeImg(T(f.a), 18) + ' ' + esc(T(f.a).short) + '</td><td class="muted hide-sm" style="white-space:normal">' + g.map((e) => esc(st.world.players[e.pid] ? st.world.players[e.pid].short : '') + ' ' + e.min + '\'').join(', ') + '</td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+    const d1 = summary.filter((x) => x.f.comp === 1), d2 = summary.filter((x) => x.f.comp === 2), po = summary.filter((x) => x.f.comp === 'playoff');
+    const parts = [];
+    const lbl = (arr) => arr[0].f.label;
+    const order = myDiv === 1 ? [d1, d2] : [d2, d1];
+    order.forEach((arr) => { if (arr.length) parts.push(sec(esc(lbl(arr)), arr)); });
+    if (po.length) parts.push(sec(esc(po[0].f.label), po));
+    UI.show(UI.head('Resultados de la jornada', null, null) + '<div class="wrap">' + parts.join('') +
+      '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="cont" data-key="Enter" autofocus><span class="n">▶</span><span class="t">Continuar</span></button><button class="bar small" data-act="tbl"><span class="n">4</span><span class="t">Ver clasificación</span></button></nav></div>',
+      { cont: () => MGR.route(), tbl: () => MGR.table(myDiv) });
+  };
+
+  // ---------- alineación
+  MGR.lineup = function () {
+    const st = MGR.st;
+    UI.lineupEditor({ world: st.world, tid: st.userTeam, lineup: LG.userLineup(st), tactics: st.tactics, title: 'Alineación y táctica', onDone: (l, t) => { st.lineup = l; st.tactics = t; T(st.userTeam).formation = l.formation; save(); MGR.hub(); } });
+  };
+
+  // ---------- plantilla
+  MGR.sortSquad = 'line';
+  MGR.squad = function () {
+    const st = MGR.st; const w = st.world;
+    const sq = DB.teamPlayers(w, st.userTeam);
+    const so = MGR.sortSquad;
+    const L = ['POR', 'DEF', 'MED', 'DEL'];
+    sq.sort((a, b) => so === 'ovr' ? b.ovr - a.ovr : so === 'age' ? a.age - b.age : so === 'value' ? b.value - a.value : so === 'g' ? b.st.g - a.st.g : (L.indexOf(a.line) - L.indexOf(b.line)) || b.ovr - a.ovr);
+    const th = (k, l, cls) => '<th class="' + (cls || '') + '"><button class="tab ' + (so === k ? 'on' : '') + '" style="padding:2px 6px;font-size:11px" data-act="sort" data-k="' + k + '">' + l + '</button></th>';
+    UI.show(MGR.top() + UI.head('Plantilla', sq.length + ' jugadores · masa salarial ' + U.money(LG.wageBill(st, st.userTeam)) + '/temporada', 'back') + '<div class="wrap"><div class="panel" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th>' + th('line', 'Pos') + '<th>Jugador</th>' + th('ovr', 'Med', 'num') + th('age', 'Edad', 'num hide-sm') + '<th class="hide-sm">Forma</th><th class="num hide-sm">Moral</th>' + th('g', 'G', 'num') + '<th class="num hide-sm">PJ</th><th class="num hide-sm">Nota</th>' + th('value', 'Valor', 'num hide-sm') + '</tr></thead><tbody>' +
+      sq.map((p) => '<tr class="click" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td><img src="' + GFX.face(p, T(p.team).kit.home.p, 40) + '" width="20" height="20" alt="" style="vertical-align:middle"> ' + esc(p.name) + UI.status(p) + (st.lineup.xi.indexOf(p.id) >= 0 ? '<span class="tag t-xi">XI</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td class="num hide-sm">' + p.age + '</td><td class="hide-sm">' + UI.fit(p.fit) + '</td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td class="num">' + p.st.g + '</td><td class="num hide-sm">' + p.st.pj + '</td><td class="num hide-sm">' + (p.st.ps ? (p.st.rat / p.st.ps).toFixed(1) : '—') + '</td><td class="num hide-sm">' + U.money(p.value) + '</td></tr>').join('') +
+      '</tbody></table></div></div></div>',
+      { back: () => MGR.hub(), sort: (el) => { MGR.sortSquad = el.dataset.k; MGR.squad(); }, pl: (el) => MGR.playerModal(+el.dataset.id, () => MGR.squad()) });
+  };
+
+  MGR.playerModal = function (pid, refresh) {
+    const st = MGR.st; const p = st.world.players[pid]; const mine = p.team === st.userTeam;
+    const win = LG.isWindow(st);
+    let actions = '', acts = {};
+    if (mine) {
+      const offers = st.offers.filter((o) => o.pid === pid);
+      actions = '<div class="panel"><h3>Mercado</h3>' + (offers.length ? MGR.offersHTML(offers) : '<p class="muted" style="margin:0 0 8px">' + (win ? 'Puedes ponerlo en venta para recibir ofertas.' : 'El mercado está cerrado.') + '</p>') +
+        (win ? '<button class="btn" data-act="sell">Poner en venta</button>' : '') + '</div>';
+      acts = Object.assign(MGR.offerActs(() => { UI.closeModal(); refresh(); }), { sell: () => { const r = LG.listForSale(st, pid); UI.toast(r.msg); save(); MGR.playerModal(pid, refresh); } });
+    } else if (T(p.team).div <= 3) {
+      const ask = LG.askingPrice(st, p);
+      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">El ' + esc(T(p.team).short) + ' valora al jugador en torno a ' + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.</p><div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">El mercado está cerrado. Abre en pretemporada y entre las jornadas 19 y 21.</p>') + '</div>';
+      acts = {
+        offer: () => {
+          const v = parseFloat(document.getElementById('offer').value); if (!(v > 0)) { UI.toast('Introduce un importe válido.'); return; }
+          const r = LG.makeOffer(st, pid, v); const box = document.getElementById('offerMsg');
+          if (r.ok) { save(); UI.closeModal(); UI.toast(r.msg); A.sfxPlay('win'); refresh(); return; }
+          box.innerHTML = '<p style="margin:8px 0 0;font-weight:700">' + esc(r.msg) + '</p>' + (r.counter ? '<button class="btn" data-act="counter" data-v="' + r.counter + '" style="margin-top:6px">Aceptar ' + U.money(r.counter) + '</button>' : '');
+        },
+        counter: (el) => { const r = LG.makeOffer(st, pid, +el.dataset.v); UI.toast(r.msg); if (r.ok) { save(); UI.closeModal(); refresh(); } },
+      };
+    }
+    UI.playerModal(st.world, pid, { actions, acts });
+  };
+
+  // ---------- mercado
+  MGR.mf = { line: 'ALL', div: 0, min: 65, max: 0, q: '', page: 0, sort: 'ovr' };
+  MGR.market = function () {
+    const st = MGR.st; const w = st.world; const F = MGR.mf; const me = T(st.userTeam);
+    const win = LG.isWindow(st);
+    let list = Object.values(w.players).filter((p) => p.team !== st.userTeam && w.teams[p.team] && (F.div ? w.teams[p.team].div === F.div : true) && (F.line === 'ALL' || p.line === F.line) && p.ovr >= F.min);
+    if (F.q) { const q = F.q.toLowerCase(); list = list.filter((p) => p.name.toLowerCase().indexOf(q) >= 0 || w.teams[p.team].short.toLowerCase().indexOf(q) >= 0); }
+    if (F.max) list = list.filter((p) => LG.askingPrice(st, p) <= F.max);
+    list.sort((a, b) => F.sort === 'value' ? a.value - b.value : F.sort === 'age' ? a.age - b.age : b.ovr - a.ovr || a.value - b.value);
+    const per = 40; const pages = Math.max(1, Math.ceil(list.length / per)); F.page = Math.min(F.page, pages - 1);
+    const shown = list.slice(F.page * per, F.page * per + per);
+    const offers = st.offers.filter((o) => w.players[o.pid] && w.players[o.pid].team === st.userTeam);
+    UI.show(MGR.top() + UI.head('Mercado de fichajes', (win ? 'Ventana ABIERTA' : 'Ventana CERRADA · abre en pretemporada y entre las jornadas 19 y 21') + ' · Presupuesto ' + U.money(me.budget), 'back') + '<div class="wrap">' +
+      (offers.length ? '<div class="panel"><h3>Ofertas por tus jugadores</h3>' + MGR.offersHTML(offers) + '</div>' : '') +
+      '<div class="panel" style="display:flex;flex-direction:column;gap:8px"><div class="row"><div class="tabs">' + [['ALL', 'Todos'], ['POR', 'Porteros'], ['DEF', 'Defensas'], ['MED', 'Medios'], ['DEL', 'Delanteros']].map(([k, l]) => '<button class="tab ' + (F.line === k ? 'on' : '') + '" data-act="f" data-k="line" data-v="' + k + '">' + l + '</button>').join('') + '</div></div>' +
+      '<div class="row"><div class="tabs">' + [[0, 'Todas'], [1, 'Primera'], [2, 'Segunda'], [3, '1ª RFEF']].map(([k, l]) => '<button class="tab ' + (F.div === k ? 'on' : '') + '" data-act="f" data-k="div" data-v="' + k + '">' + l + '</button>').join('') + '</div>' +
+      '<label class="f" style="flex:1;min-width:140px">Buscar jugador o club<input type="text" id="mq" value="' + esc(F.q) + '" placeholder="Nombre…"></label>' +
+      '<label class="f" style="width:110px">Media mínima<input type="number" id="mmin" min="40" max="95" value="' + F.min + '"></label><label class="f" style="width:130px">Precio máx. (M€)<input type="number" id="mmax" min="0" step="1" value="' + (F.max || '') + '" placeholder="sin límite"></label><button class="btn" data-act="apply">Filtrar</button></div></div>' +
+      '<div class="panel" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Pos</th><th>Jugador</th><th>Club</th><th class="num">Med</th><th class="num hide-sm">Edad</th><th class="num">Precio</th></tr></thead><tbody>' +
+      (shown.length ? shown.map((p) => '<tr class="click" data-act="pl" data-id="' + p.id + '"><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + '</td><td>' + GFX.badgeImg(w.teams[p.team], 18) + ' <span class="hide-sm">' + esc(w.teams[p.team].short) + '</span></td><td class="num">' + UI.ovr(p.ovr) + '</td><td class="num hide-sm">' + p.age + '</td><td class="num">' + U.money(LG.askingPrice(st, p)) + '</td></tr>').join('') : '<tr><td colspan="6">No hay jugadores con esos filtros.</td></tr>') +
+      '</tbody></table></div><div class="pager"><button class="btn alt" data-act="pg" data-d="-1" ' + (F.page <= 0 ? 'disabled' : '') + '>◀</button><span>Página ' + (F.page + 1) + ' de ' + pages + ' · ' + list.length + ' jugadores</span><button class="btn alt" data-act="pg" data-d="1" ' + (F.page >= pages - 1 ? 'disabled' : '') + '>▶</button></div></div></div>',
+      Object.assign(MGR.offerActs(() => MGR.market()), {
+        back: () => MGR.hub(),
+        f: (el) => { F[el.dataset.k] = el.dataset.k === 'line' ? el.dataset.v : +el.dataset.v; F.page = 0; MGR.market(); },
+        apply: () => { F.q = document.getElementById('mq').value.trim(); F.min = +document.getElementById('mmin').value || 0; F.max = +document.getElementById('mmax').value || 0; F.page = 0; MGR.market(); },
+        pg: (el) => { F.page += +el.dataset.d; MGR.market(); },
+        pl: (el) => MGR.playerModal(+el.dataset.id, () => MGR.market()),
+      }));
+    const q = document.getElementById('mq'); if (q) q.addEventListener('keydown', (e) => { if (e.key === 'Enter') UI.act.apply(); });
+  };
+
+  // ---------- clasificación
+  MGR.table = function (dv) {
+    const st = MGR.st; const rows = LG.table(st, dv);
+    const zone = (pos) => {
+      if (dv === 1) return pos <= 4 ? 'z-ucl' : pos === 5 ? 'z-uel' : pos === 6 ? 'z-uecl' : pos >= 18 ? 'z-down' : '';
+      return pos <= 2 ? 'z-up' : pos <= 6 ? 'z-po' : pos >= 19 ? 'z-down' : '';
+    };
+    const legend = dv === 1 ? '<span class="zone z-ucl"></span>Champions <span class="zone z-uel"></span>Europa League <span class="zone z-uecl"></span>Conference <span class="zone z-down"></span>Descenso' : '<span class="zone z-up"></span>Ascenso directo <span class="zone z-po"></span>Playoff de ascenso <span class="zone z-down"></span>Descenso a 1ª RFEF';
+    UI.show(MGR.top() + UI.head('Clasificación', divName(dv) + ' ' + DB.SEASON_LABEL(st.season), 'back') + '<div class="wrap"><div class="tabs">' + [[1, 'Primera'], [2, 'Segunda']].map(([d, l]) => '<button class="tab ' + (d === dv ? 'on' : '') + '" data-act="dv" data-d="' + d + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="panel" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Equipo</th><th class="num">Pts</th><th class="num">PJ</th><th class="num hide-sm">G</th><th class="num hide-sm">E</th><th class="num hide-sm">P</th><th class="num">GF</th><th class="num">GC</th><th class="num">DG</th><th class="hide-sm">Racha</th></tr></thead><tbody>' +
+      rows.map((r) => '<tr class="' + (r.id === st.userTeam ? 'me' : '') + '"><td><span class="zone ' + zone(r.pos) + '"></span>' + r.pos + '</td><td>' + GFX.badgeImg(T(r.id), 20) + ' ' + esc(T(r.id).short) + '</td><td class="num"><b>' + r.pts + '</b></td><td class="num">' + r.pj + '</td><td class="num hide-sm">' + r.g + '</td><td class="num hide-sm">' + r.e + '</td><td class="num hide-sm">' + r.p + '</td><td class="num">' + r.gf + '</td><td class="num">' + r.gc + '</td><td class="num">' + (r.gf - r.gc > 0 ? '+' : '') + (r.gf - r.gc) + '</td><td class="hide-sm">' + UI.formHTML(r.form) + '</td></tr>').join('') +
+      '</tbody></table></div><p class="muted" style="margin:6px">' + legend + '. Desempate: enfrentamientos directos, diferencia de goles y goles a favor.</p></div>' +
+      (dv === 2 && st.playoff ? MGR.bracketHTML() : '') + '</div>',
+      { back: () => MGR.hub(), dv: (el) => MGR.table(+el.dataset.d) });
+  };
+
+  MGR.bracketHTML = function () {
+    const st = MGR.st; const P = st.playoff; if (!P) return '';
+    const tie = (t, title) => { if (!t) return '<div class="tie"><b>' + title + '</b><br>Por decidir</div>'; const legs = t.legs.map((l) => l ? esc(T(l.h).short) + ' ' + l.hg + '-' + l.ag + ' ' + esc(T(l.a).short) : '').filter(Boolean).join('<br>'); return '<div class="tie"><b>' + title + '</b><br>' + esc(T(t.a).short) + ' vs ' + esc(T(t.b).short) + (legs ? '<br>' + legs : '') + '</div>'; };
+    return '<div class="panel"><h3>Playoff de ascenso</h3><div class="bracket">' + tie(P.semis[0], 'Semifinal 1 (3º-6º)') + tie(P.semis[1], 'Semifinal 2 (4º-5º)') + '</div><div style="margin-top:8px">' + tie(P.final, 'Final') + '</div>' + (P.winner ? '<p><b>Asciende: ' + esc(T(P.winner).name) + '</b></p>' : '') + '<p class="muted">Ida en el campo del peor clasificado. Si hay empate en el global, pasa el mejor clasificado.</p></div>';
+  };
+
+  // ---------- calendario
+  MGR.calendar = function (rnd, dvSel) {
+    const st = MGR.st; const dv = dvSel || T(st.userTeam).div; const c = st.comp[dv];
+    if (rnd === undefined) rnd = Math.min(st.day, c.rounds.length - 1);
+    rnd = U.clamp(rnd, 0, c.rounds.length - 1);
+    const games = c.rounds[rnd].map(([h, a], i) => { const r = c.res[rnd + '_' + i]; return '<tr class="' + (h === st.userTeam || a === st.userTeam ? 'me' : '') + '"><td>' + GFX.badgeImg(T(h), 18) + ' ' + esc(T(h).short) + '</td><td class="c"><b>' + (r ? r.hg + ' - ' + r.ag : '–') + '</b></td><td>' + GFX.badgeImg(T(a), 18) + ' ' + esc(T(a).short) + '</td><td class="muted hide-sm" style="white-space:normal">' + (r && r.g ? r.g.map((g) => esc(st.world.players[g[2]] ? st.world.players[g[2]].short : '') + ' ' + g[1] + '\'').join(', ') : '') + '</td></tr>'; }).join('');
+    const mine = c.teams.indexOf(st.userTeam) >= 0 ? c.rounds.map((r, ri) => { const i = r.findIndex(([h, a]) => h === st.userTeam || a === st.userTeam); if (i < 0) return ''; const [h, a] = r[i]; const res = c.res[ri + '_' + i]; const home = h === st.userTeam; const opp = home ? a : h; let cls = ''; if (res) { const gf = home ? res.hg : res.ag, ga = home ? res.ag : res.hg; cls = gf > ga ? 'V' : gf < ga ? 'D' : 'E'; } return '<tr class="click" data-act="go" data-r="' + ri + '"><td>J' + (ri + 1) + '</td><td>' + (home ? 'Casa' : 'Fuera') + '</td><td>' + GFX.badgeImg(T(opp), 18) + ' ' + esc(T(opp).short) + '</td><td class="c">' + (res ? '<span class="form"><i class="' + cls + '">' + cls + '</i></span> ' + res.hg + '-' + res.ag : '') + '</td></tr>'; }).join('') : '';
+    UI.show(MGR.top() + UI.head('Calendario y resultados', divName(dv), 'back') + '<div class="wrap"><div class="tabs">' + [[1, 'Primera'], [2, 'Segunda']].map(([d, l]) => '<button class="tab ' + (d === dv ? 'on' : '') + '" data-act="dv" data-d="' + d + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="cols-2"><div class="panel"><div class="pager"><button class="btn alt" data-act="go" data-r="' + (rnd - 1) + '" ' + (rnd <= 0 ? 'disabled' : '') + '>◀</button><b>Jornada ' + (rnd + 1) + ' de ' + c.rounds.length + '</b><button class="btn alt" data-act="go" data-r="' + (rnd + 1) + '" ' + (rnd >= c.rounds.length - 1 ? 'disabled' : '') + '>▶</button></div><div class="tbl-wrap"><table class="tbl"><tbody>' + games + '</tbody></table></div></div>' +
+      (mine ? '<div class="panel" style="padding:6px"><h3 style="margin:4px">Calendario del ' + esc(T(st.userTeam).short) + '</h3><div class="tbl-wrap" style="max-height:60vh;overflow-y:auto"><table class="tbl"><tbody>' + mine + '</tbody></table></div></div>' : '') + '</div>' +
+      (st.playoff ? MGR.bracketHTML() : '') + '</div>',
+      { back: () => MGR.hub(), go: (el) => MGR.calendar(+el.dataset.r, dv), dv: (el) => MGR.calendar(undefined, +el.dataset.d) });
+  };
+
+  // ---------- estadísticas
+  MGR.stats = function (dv) {
+    const st = MGR.st; const w = st.world;
+    const pool = Object.values(w.players).filter((p) => w.teams[p.team] && w.teams[p.team].div === dv);
+    const tbl = (title, list, val, extra) => '<div class="panel" style="padding:6px"><h3 style="margin:4px">' + title + '</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + (list.length ? list.map((p, i) => '<tr class="click ' + (p.team === st.userTeam ? 'me' : '') + '" data-act="pl" data-id="' + p.id + '"><td>' + (i + 1) + '</td><td>' + esc(p.name) + '</td><td>' + GFX.badgeImg(w.teams[p.team], 18) + ' <span class="hide-sm">' + esc(w.teams[p.team].short) + '</span></td><td class="num"><b>' + val(p) + '</b></td>' + (extra ? '<td class="num muted">' + extra(p) + '</td>' : '') + '</tr>').join('') : '<tr><td>Aún no hay datos.</td></tr>') + '</tbody></table></div></div>';
+    const minPs = Math.max(1, Math.floor(st.day * 0.4));
+    UI.show(MGR.top() + UI.head('Estadísticas', divName(dv), 'back') + '<div class="wrap"><div class="tabs">' + [[1, 'Primera'], [2, 'Segunda']].map(([d, l]) => '<button class="tab ' + (d === dv ? 'on' : '') + '" data-act="dv" data-d="' + d + '">' + l + '</button>').join('') + '</div><div class="grid2">' +
+      tbl('Pichichi (goles)', LG.scorers(st, dv, 12), (p) => p.st.g, (p) => p.st.pj + ' PJ') +
+      tbl('Asistencias', pool.filter((p) => p.st.a > 0).sort((a, b) => b.st.a - a.st.a).slice(0, 12), (p) => p.st.a) +
+      tbl('Zamora (goles encajados por partido)', LG.keepers(st, dv, 10), (p) => (p.st.gc / p.st.pjp).toFixed(2), (p) => p.st.pjp + ' PJ') +
+      tbl('Mejor nota media', pool.filter((p) => p.st.ps >= minPs).sort((a, b) => b.st.rat / b.st.ps - a.st.rat / a.st.ps).slice(0, 12), (p) => (p.st.rat / p.st.ps).toFixed(2)) +
+      tbl('Tarjetas', pool.filter((p) => p.st.ta + p.st.tr > 0).sort((a, b) => (b.st.ta + b.st.tr * 3) - (a.st.ta + a.st.tr * 3)).slice(0, 12), (p) => p.st.ta + ' TA', (p) => p.st.tr + ' TR') +
+      '</div></div>',
+      { back: () => MGR.hub(), dv: (el) => MGR.stats(+el.dataset.d), pl: (el) => MGR.playerModal(+el.dataset.id, () => MGR.stats(dv)) });
+  };
+
+  // ---------- entrenamiento
+  MGR.TRAIN = {
+    equilibrado: ['Equilibrado', 'Recuperación normal y mantenimiento del nivel.'],
+    fisico: ['Físico', 'Mejor recuperación entre jornadas. Ideal con calendario cargado.'],
+    tecnico: ['Técnico', 'Los jóvenes (23 años o menos) pueden mejorar su media; la recuperación es algo menor.'],
+    tactico: ['Táctico', 'El grupo gana confianza: la moral sube cada semana.'],
+    descanso: ['Descanso', 'Máxima recuperación física. Útil tras varios partidos exigentes.'],
+  };
+  MGR.training = function () {
+    const st = MGR.st; const sq = DB.teamPlayers(st.world, st.userTeam).sort((a, b) => a.fit - b.fit);
+    UI.show(MGR.top() + UI.head('Entrenamiento', 'Plan semanal del primer equipo', 'back') + '<div class="wrap"><div class="grid3">' +
+      Object.entries(MGR.TRAIN).map(([k, [n, d]]) => '<button class="panel" style="text-align:left;cursor:pointer;border-color:' + (st.training === k ? '#1d2126' : '#6e7378') + ';background:' + (st.training === k ? '#fff3b0' : '') + '" data-act="set" data-k="' + k + '"><h3>' + n + (st.training === k ? ' ✓' : '') + '</h3><span class="muted">' + d + '</span></button>').join('') +
+      '</div><div class="panel" style="padding:6px"><h3 style="margin:4px">Estado físico de la plantilla</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + sq.map((p) => '<tr><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + UI.status(p) + '</td><td>' + UI.fit(p.fit) + ' ' + Math.round(p.fit) + '%</td><td class="num">Moral ' + Math.round(p.mor) + '</td></tr>').join('') + '</tbody></table></div></div></div>',
+      { back: () => MGR.hub(), set: (el) => { st.training = el.dataset.k; save(); MGR.training(); } });
+  };
+
+  // ---------- finanzas
+  MGR.finance = function () {
+    const st = MGR.st; const t = T(st.userTeam);
+    const est = LG.ticketIncome(st, t, null);
+    const wages = LG.wageBill(st, t.id);
+    const log = st.finance.log.slice(0, 15);
+    UI.show(MGR.top() + UI.head('Finanzas', esc(t.stadium) + ' · ' + t.cap.toLocaleString('es-ES') + ' localidades', 'back') + '<div class="wrap"><div class="grid2">' +
+      '<div class="panel"><h3>Resumen</h3><div class="kv"><b>Presupuesto</b><span>' + U.money(t.budget) + '</span><b>Masa salarial</b><span>' + U.money(wages) + ' / temporada</span><b>Derechos de TV</b><span>' + U.money(LG.tvIncome(t)) + ' por jornada</span><b>Último público</b><span>' + (st.lastAttendance ? st.lastAttendance.toLocaleString('es-ES') : '—') + '</span></div></div>' +
+      '<div class="panel"><h3>Precio de la entrada</h3><div class="row"><input type="range" min="10" max="150" step="1" value="' + t.ticket + '" data-inp="tp" id="tp" aria-label="Precio de la entrada"><b id="tpv" style="min-width:56px">' + t.ticket + ' €</b></div><p class="muted" id="tpe">Asistencia estimada: ' + est.att.toLocaleString('es-ES') + ' · ' + U.money(est.money) + ' por partido en casa</p></div></div>' +
+      '<div class="panel" style="padding:6px"><h3 style="margin:4px">Movimientos recientes</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jornada</th><th>Concepto</th><th class="num">Importe</th></tr></thead><tbody>' +
+      (log.length ? log.map((l) => l.items.map((it, i) => '<tr><td>' + (i === 0 ? 'J' + (l.d + 1) + ' · ' + DB.SEASON_LABEL(l.s) : '') + '</td><td>' + esc(it[0]) + '</td><td class="num" style="color:' + (it[1] < 0 ? '#a01818' : '#1e6b2a') + '">' + U.money(it[1]) + '</td></tr>').join('')).join('') : '<tr><td colspan="3">Todavía no hay movimientos.</td></tr>') + '</tbody></table></div></div></div>',
+      {
+        back: () => MGR.hub(),
+        tp: (el) => { t.ticket = +el.value; const e = LG.ticketIncome(st, t, null); document.getElementById('tpv').textContent = t.ticket + ' €'; document.getElementById('tpe').textContent = 'Asistencia estimada: ' + e.att.toLocaleString('es-ES') + ' · ' + U.money(e.money) + ' por partido en casa'; save(); },
+      });
+  };
+
+  // ---------- club, directiva, historial y cantera
+  MGR.club = function () {
+    const st = MGR.st; const t = T(st.userTeam); const ys = LG.youthProspects(st);
+    UI.show(MGR.top() + UI.head('Club', esc(t.name) + ' · ' + esc(t.city), 'back') + '<div class="wrap"><div class="grid2">' +
+      '<div class="panel"><h3>Directiva</h3><div class="kv"><b>Objetivo</b><span>' + esc(st.board.objective.text) + '</span><b>Confianza</b><span>' + Math.round(st.board.conf) + '%</span><b>Posición actual</b><span>' + (LG.position(st, t.id) || '—') + 'º</span></div><p class="muted">Si la confianza cae por debajo del 5% durante la temporada, o del 20% al terminarla, serás destituido.</p></div>' +
+      '<div class="panel"><h3>Cantera</h3>' + (st.youthUsed ? '<p class="muted">Ya has subido un canterano esta temporada.</p>' : '<p class="muted" style="margin-top:0">Puedes subir a uno de estos juveniles al primer equipo (uno por temporada). Son jugadores generados por el juego.</p>') +
+      ys.map((y, i) => '<div class="row" style="justify-content:space-between;border-top:1px solid #a3a8ad;padding:4px 0"><span>' + UI.ovr(y.ovr) + ' <span class="pos-tag l-' + DB.LINE_OF[y.role] + '">' + y.role + '</span> ' + esc(y.name) + ' · ' + y.age + ' años · potencial ' + (y.pot >= 80 ? 'alto' : y.pot >= 70 ? 'medio' : 'bajo') + '</span>' + (st.youthUsed ? '' : '<button class="btn" data-act="youth" data-i="' + i + '">Subir</button>') + '</div>').join('') + '</div></div>' +
+      '<div class="panel" style="padding:6px"><h3 style="margin:4px">Historial</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Temporada</th><th>Tu club</th><th>Puesto</th><th>Campeón de Liga</th><th class="hide-sm">Ascienden</th><th class="hide-sm">Pichichi</th></tr></thead><tbody>' +
+      (st.history.length ? st.history.map((h) => '<tr><td>' + DB.SEASON_LABEL(h.season) + '</td><td>' + esc(T(h.user.team).short) + '</td><td>' + (h.user.pos ? h.user.pos + 'º ' + (h.user.div === 1 ? '1ª' : '2ª') : '—') + (h.user.met ? ' ✓' : '') + '</td><td>' + esc(T(h.champ1).short) + '</td><td class="hide-sm">' + h.promoted.map((id) => esc(T(id).short)).join(', ') + '</td><td class="hide-sm">' + (h.pich1 ? esc(h.pich1[0]) + ' (' + h.pich1[2] + ')' : '') + '</td></tr>').join('') : '<tr><td colspan="6">Tu primera temporada está en marcha.</td></tr>') + '</tbody></table></div></div></div>',
+      { back: () => MGR.hub(), youth: (el) => { const r = LG.signYouth(st, +el.dataset.i); UI.toast(r.msg); save(); MGR.club(); } });
+  };
+
+  MGR.news = function () {
+    const st = MGR.st;
+    UI.show(MGR.top() + UI.head('Noticias', null, 'back') + '<div class="wrap"><div class="panel" style="display:grid;gap:6px">' + (st.news.length ? st.news.map((n) => '<div class="news-item ' + n.type + '"><span class="muted">J' + (n.d + 1) + ' · ' + DB.SEASON_LABEL(n.s) + '</span><br>' + esc(n.text) + '</div>').join('') : '<p>Sin noticias.</p>') + '</div></div>', { back: () => MGR.hub() });
+  };
+
+  // ---------- fin de temporada
+  MGR.seasonEnd = function () {
+    const st = MGR.st; const h = st.history[0]; if (!h) return MGR.hub();
+    const t1 = LG.table(st, 1), t2 = LG.table(st, 2);
+    const mini = (rows, dv) => '<table class="tbl"><tbody>' + rows.map((r) => '<tr class="' + (r.id === st.userTeam ? 'me' : '') + '"><td>' + r.pos + '</td><td>' + GFX.badgeImg(T(r.id), 18) + ' ' + esc(T(r.id).short) + '</td><td class="num"><b>' + r.pts + '</b></td><td>' + (dv === 1 && r.pos >= 18 ? '<span class="tag t-inj">DESCIENDE</span>' : '') + (dv === 2 && h.promoted.indexOf(r.id) >= 0 ? '<span class="tag t-xi">ASCIENDE</span>' : '') + (dv === 2 && h.down2.indexOf(r.id) >= 0 ? '<span class="tag t-inj">A 1ª RFEF</span>' : '') + '</td></tr>').join('') + '</tbody></table>';
+    const u = h.user;
+    const verdict = u.met ? '¡Objetivo cumplido! La directiva está satisfecha con tu trabajo.' : 'No has cumplido el objetivo (' + esc(u.objective) + ').';
+    A.sfxPlay(u.met ? 'win' : 'lose');
+    UI.show(UI.title('Fin de temporada ' + DB.SEASON_LABEL(h.season)) + '<div class="wrap">' +
+      '<div class="panel center"><div class="big">' + GFX.badgeImg(T(h.champ1), 48) + ' ' + esc(T(h.champ1).name) + ', campeón de Liga</div><p style="margin:6px 0 0">' + esc(T(u.team).short) + ' termina ' + (u.pos ? u.pos + 'º en ' + (u.div === 1 ? 'Primera' : 'Segunda') : 'la temporada') + '. ' + verdict + '</p>' +
+      (h.pich1 ? '<p class="muted" style="margin:4px 0 0">Pichichi: ' + esc(h.pich1[0]) + ' (' + esc(T(h.pich1[1]).short) + ') con ' + h.pich1[2] + ' goles' + (h.mvp ? ' · Mejor jugador: ' + esc(h.mvp[0]) : '') + '</p>' : '') + '</div>' +
+      '<div class="grid2"><div class="panel" style="padding:6px"><h3 style="margin:4px">Primera · arriba y abajo</h3>' + mini(t1.slice(0, 6).concat(t1.slice(-3)), 1) + '</div><div class="panel" style="padding:6px"><h3 style="margin:4px">Segunda</h3>' + mini(t2.slice(0, 6).concat(t2.slice(-4)), 2) + '</div></div>' +
+      MGR.bracketHTML() +
+      '<div class="panel"><b>Suben a Primera:</b> ' + h.promoted.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Segunda:</b> ' + h.relegated.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Primera RFEF:</b> ' + h.down2.map((id) => esc(T(id).name)).join(', ') + '<br><b>Suben desde Primera RFEF:</b> ' + h.up3.map((id) => esc(T(id).name)).join(', ') + '</div>' +
+      '<nav class="menu" style="max-width:none">' + (st.fired ? '<button class="bar red" data-act="fired" autofocus><span class="n">!</span><span class="t">Reunión con la directiva</span></button>' : '<button class="bar gold" data-act="next" autofocus><span class="n">▶</span><span class="t">Empezar temporada ' + DB.SEASON_LABEL(h.season + 1) + '</span></button>') +
+      '<button class="bar small grey" data-act="exit"><span class="n">0</span><span class="t">Guardar y salir</span></button></nav></div>',
+      { next: () => { LG.newSeason(st); save(); UI.toast('¡Nueva temporada! El mercado de fichajes está abierto.'); MGR.hub(); }, fired: () => MGR.fired(), exit: () => { save(); UI.mainMenu(); } });
+  };
+
+  MGR.fired = function () {
+    const st = MGR.st; const offers = LG.jobOffers(st);
+    UI.show(UI.head(st.outOfLeague ? 'Tu club ha descendido a Primera RFEF' : 'Destituido', esc(T(st.userTeam).name), null) + '<div class="wrap"><div class="panel"><p style="margin-top:0">' + (st.outOfLeague ? 'Primera RFEF no se juega en esta versión, pero otros clubes quieren contar contigo.' : 'La directiva ha perdido la confianza en tu proyecto y ha decidido prescindir de tus servicios. Algunos clubes se han interesado por ti:') + '</p>' +
+      '<nav class="menu" style="max-width:none">' + offers.map((id, i) => '<button class="bar" data-act="take" data-id="' + id + '"><span class="n">' + (i + 1) + '</span><span class="t">' + GFX.badgeImg(T(id), 28) + ' ' + esc(T(id).name) + '</span><span class="meta">' + divName(st.seasonOver && st.pendingDivs ? (st.pendingDivs[1].indexOf(id) >= 0 ? 1 : 2) : T(id).div) + '</span></button>').join('') +
+      '<button class="bar red" data-act="quit"><span class="n">✕</span><span class="t">Retirarse (terminar la partida)</span></button></nav></div></div>',
+      {
+        take: (el) => { LG.changeTeam(st, el.dataset.id); save(); if (st.seasonOver) { LG.newSeason(st); save(); } MGR.hub(); },
+        quit: () => UI.confirm('¿Terminar esta partida? Se borrará de la ranura ' + MGR.slot + '.', 'Terminar', () => { U.store.del(LG.SAVE_KEY + MGR.slot); MGR.st = null; UI.mainMenu(); }, true),
+      });
+  };
+
+  MF.MGR = MGR;
+})(typeof window !== 'undefined' ? window : globalThis);

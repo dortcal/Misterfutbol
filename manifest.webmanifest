@@ -1,0 +1,16 @@
+{
+  "name": "Míster Fútbol 26·27",
+  "short_name": "Míster Fútbol",
+  "description": "Fútbol y mánager con las plantillas de Primera y Segunda 2026/27.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#9b9fa3",
+  "theme_color": "#3e7121",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
