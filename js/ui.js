@@ -144,6 +144,7 @@
       '<button class="bar small grey" data-act="help" data-key="5"><span class="n">5</span><span class="t">Cómo se juega</span></button>' +
       '</nav>' +
       '<div class="foot"><button class="btn alt" data-act="sound">' + (A.on ? '♪ SONIDO: SÍ' : '♪ SONIDO: NO') + '</button>' + (UI.canInstall ? '<button class="btn alt" data-act="install">Instalar app</button>' : '') + '</div>' +
+      '<div class="credit">Diseñado por <b>David OZC</b></div>' +
       '<p class="muted center" style="max-width:640px;margin:0">Juego independiente hecho por aficionados. Escudos y equipaciones generados por el juego; nombres de clubes y jugadores usados solo para identificarlos. Plantillas a octubre de 2026.</p>',
       {
         friendly: () => UI.friendly(),
