@@ -6,7 +6,8 @@
   const MGR = { st: null, slot: 1 };
   const T = (id) => MGR.st.world.teams[id];
   const save = () => { if (MGR.st && !LG.save(MGR.st, MGR.slot)) UI.toast('No se ha podido guardar (almacenamiento lleno o bloqueado).'); };
-  const divName = (d) => (d === 1 ? 'Primera División' : d === 2 ? 'Segunda División' : 'Primera RFEF');
+  const divName = (d) => (d === 1 ? 'Primera División' : d === 2 ? 'Segunda División' : d === 3 ? 'Primera RFEF' : 'Otras ligas');
+  const objChip = (s) => '<span class="obj-chip ' + s.level + '">' + (s.level === 'ok' ? 'En objetivo' : s.level === 'riesgo' ? 'En riesgo' : 'Lejos') + '</span>';
 
   // ---------- partidas guardadas
   MGR.start = function () {
@@ -51,11 +52,13 @@
     const w = UI.baseWorld();
     const ids = Object.values(w.teams).filter((t) => t.div === dv).sort((a, b) => DB.teamStrength(w, b.id) - DB.teamStrength(w, a.id));
     sel = sel || ids[0].id; const t = w.teams[sel];
+    const objective = LG.objectiveFor(w, ids.map((x) => x.id), sel).obj;
     const best = DB.teamPlayers(w, sel).sort((a, b) => b.ovr - a.ovr).slice(0, 5);
     UI.show(UI.head('Nueva partida', 'Elige el club que vas a dirigir', 'back') + '<div class="wrap">' +
       '<div class="tabs">' + [[1, 'Primera'], [2, 'Segunda']].map(([d, l]) => '<button class="tab ' + (d === dv ? 'on' : '') + '" data-act="div" data-d="' + d + '">' + l + '</button>').join('') + '</div>' +
       '<div class="cols-2"><div class="panel"><div class="teamlist" style="max-height:60vh">' + ids.map((x) => '<button class="tpick ' + (x.id === sel ? 'on' : '') + '" data-act="sel" data-id="' + x.id + '">' + GFX.badgeImg(x, 26) + '<span>' + esc(x.short) + '</span></button>').join('') + '</div></div>' +
       '<div class="panel" style="display:flex;flex-direction:column;gap:10px"><div class="pcard">' + GFX.badgeImg(t, 72) + '<div><div class="big">' + esc(t.name) + '</div><div>' + UI.stars(DB.teamStrength(w, t.id)) + '</div><div class="muted">' + esc(t.stadium) + ' · ' + t.cap.toLocaleString('es-ES') + ' espectadores</div></div></div>' +
+      '<div class="panel" style="margin:0;background:#fff3b0;border-color:#1d2126"><h3 style="margin:0 0 2px">🎯 Objetivo de la directiva</h3><div class="big" style="font-size:20px">' + esc(objective.text) + '</div><div class="muted">Si durante la temporada te alejas mucho de este objetivo, la directiva puede destituirte.</div></div>' +
       '<div class="kv"><b>Presupuesto</b><span>' + U.money(t.budget) + '</span><b>Media del once</b><span>' + DB.teamStrength(w, t.id).toFixed(1) + '</span><b>Plantilla</b><span>' + DB.teamPlayers(w, t.id).length + ' jugadores</span></div>' +
       '<div><h3>Figuras</h3>' + best.map((p) => '<div>' + UI.ovr(p.ovr) + ' ' + UI.pos(p) + ' ' + esc(p.name) + '</div>').join('') + '</div>' +
       '<label class="f">Tu nombre de entrenador<input type="text" id="mgrname" maxlength="24" value="' + esc(U.store.get('mf27_name', 'Míster')) + '"></label>' +
@@ -83,7 +86,8 @@
     const conf = Math.round(st.board.conf);
     const pos = LG.position(st, t.id);
     const rounds = LG.ROUNDS[t.div];
-    return '<div class="panel hub-top">' + GFX.badgeImg(t, 64) + '<div style="min-width:0"><div class="club">' + esc(t.name) + '</div><div class="muted">' + esc(st.userName) + ' · ' + DB.SEASON_LABEL(st.season) + ' · ' + divName(t.div) + ' · Jornada ' + Math.min(st.day + 1, rounds) + '/' + rounds + (pos && st.day > 0 ? ' · ' + pos + 'º' : '') + '</div>' +
+    return '<div class="panel hub-top">' + GFX.badgeImg(t, 64) + '<div style="min-width:0"><div class="club">' + esc(t.name) + '</div><div class="muted">' + esc(st.userName) + ' · ' + DB.SEASON_LABEL(st.season) + ' · ' + divName(t.div) + ' · ' + (LG.cupDue(st) ? 'Copa del Rey' : 'Jornada ' + Math.min(st.day + 1, rounds) + '/' + rounds) + (pos && st.day > 0 ? ' · ' + pos + 'º' : '') + '</div>' +
+      (st.board.objective.text ? '<div class="row" style="gap:6px;margin-top:3px;font-size:14px"><span>🎯 ' + esc(st.board.objective.text) + '</span>' + objChip(LG.objectiveStatus(st)) + '</div>' : '') +
       '<div class="row" style="gap:8px;margin-top:4px"><span class="muted">Directiva</span><span class="meter" title="Confianza ' + conf + '%"><i style="width:' + conf + '%"></i></span><span class="muted">' + conf + '%</span></div></div><div class="money" title="Presupuesto">' + U.money(t.budget) + '</div></div>';
   };
 
@@ -95,39 +99,42 @@
     const t = T(st.userTeam); const f = LG.userFixture(st);
     let next;
     if (f) {
-      const h = T(f.h), a = T(f.a); const started = st.day > 0 && f.comp !== 'playoff'; const ph = started ? LG.position(st, f.h) : null, pa = started ? LG.position(st, f.a) : null;
+      const h = T(f.h), a = T(f.a); const started = st.day > 0 && f.comp !== 'playoff';
+      const cupInfo = f.comp === 'cup' ? '<div class="center" style="margin-bottom:6px"><b>Partido único</b> · ' + (f.neutral ? 'Final en campo neutral' : 'en casa del equipo con peor media (' + LG.squadAvg(st.world, f.h).toFixed(1) + ' vs ' + LG.squadAvg(st.world, f.a).toFixed(1) + ')') + ' · si hay empate, prórroga y penaltis</div>' : ''; const ph = started ? LG.position(st, f.h) : null, pa = started ? LG.position(st, f.a) : null;
       const tab = h.div <= 2 ? LG.table(st, h.div) : [];
       const fh = (tab.find((r) => r.id === f.h) || { form: [] }).form, fa = (tab.find((r) => r.id === f.a) || { form: [] }).form;
-      next = '<div class="panel next"><h3>Próximo partido · ' + esc(f.label) + '</h3><div class="vs-card"><div>' + GFX.badgeImg(h, 56) + '<div class="tn">' + esc(h.short) + '</div><div class="muted">' + (ph ? ph + 'º · ' : '') + UI.formHTML(fh) + '</div></div><div class="vs">VS</div><div>' + GFX.badgeImg(a, 56) + '<div class="tn">' + esc(a.short) + '</div><div class="muted">' + (pa ? pa + 'º · ' : '') + UI.formHTML(fa) + '</div></div></div>' +
-        '<div class="muted center">' + esc(h.stadium) + ' · Tu once: ' + DB.lineupRating(st.world, LG.userLineup(st)).toFixed(1) + ' (' + st.lineup.formation + ') · Rival: ' + DB.teamStrength(st.world, f.h === st.userTeam ? f.a : f.h).toFixed(1) + '</div>' +
+      next = '<div class="panel next"><h3>' + (f.comp === 'cup' ? '🏆 ' : '') + 'Próximo partido · ' + esc(f.label) + '</h3>' + cupInfo + '<div class="vs-card"><div>' + GFX.badgeImg(h, 56) + '<div class="tn">' + esc(h.short) + '</div><div class="muted">' + (ph ? ph + 'º · ' : '') + UI.formHTML(fh) + '</div></div><div class="vs">VS</div><div>' + GFX.badgeImg(a, 56) + '<div class="tn">' + esc(a.short) + '</div><div class="muted">' + (pa ? pa + 'º · ' : '') + UI.formHTML(fa) + '</div></div></div>' +
+        '<div class="muted center">' + esc(f.venue || h.stadium) + (f.neutral ? ' (neutral)' : '') + ' · Tu once: ' + DB.lineupRating(st.world, LG.userLineup(st)).toFixed(1) + ' (' + st.lineup.formation + ') · Rival: ' + DB.teamStrength(st.world, f.h === st.userTeam ? f.a : f.h).toFixed(1) + '</div>' +
         '<div class="grid3"><button class="bar gold small" data-act="play" data-m="jugar" data-key="j"><span class="n">J</span><span class="t">Jugar</span></button><button class="bar small" data-act="play" data-m="visionado" data-key="v"><span class="n">V</span><span class="t">Visionado</span></button><button class="bar small" data-act="play" data-m="resultado" data-key="r"><span class="n">R</span><span class="t">Resultado</span></button></div></div>';
     } else {
-      next = '<div class="panel next"><h3>Jornada ' + (st.day + 1) + '</h3><p style="margin:0">' + esc(t.short) + ' no juega en esta jornada' + (st.day >= 38 && t.div === 1 ? ': la Primera ha terminado y se completan la Segunda y el playoff de ascenso.' : '.') + '</p>' +
-        '<div class="grid3"><button class="bar small" data-act="simday"><span class="n">»</span><span class="t">Simular jornada</span></button><button class="bar small grey" data-act="simall"><span class="n">⏭</span><span class="t">Hasta final de temporada</span></button></div></div>';
+      const cupDay = LG.cupDue(st);
+      next = '<div class="panel next"><h3>' + (cupDay ? '🏆 Copa del Rey · ' + esc(st.cup.rounds[st.cup.round].label) : 'Jornada ' + (st.day + 1)) + '</h3><p style="margin:0">' + (cupDay ? esc(t.short) + (st.cup.teams.indexOf(t.id) < 0 ? ' no disputa la Copa (los filiales no participan).' : ' ya está eliminado de la Copa. Se juega la ronda sin tu equipo.') : esc(t.short) + ' no juega en esta jornada' + (st.day >= 38 && t.div === 1 ? ': la Primera ha terminado y se completan la Segunda y el playoff de ascenso.' : '.')) + '</p>' +
+        '<div class="grid3"><button class="bar small" data-act="simday"><span class="n">»</span><span class="t">' + (cupDay ? 'Simular ronda de Copa' : 'Simular jornada') + '</span></button><button class="bar small grey" data-act="simall"><span class="n">⏭</span><span class="t">Hasta final de temporada</span></button></div></div>';
     }
     const offers = st.offers.filter((o) => st.world.players[o.pid] && st.world.players[o.pid].team === st.userTeam);
     const news = st.news.slice(0, 3).map((n) => '<div class="news-item ' + n.type + '">' + esc(n.text) + '</div>').join('');
-    const win = LG.isWindow(st);
+    const C = st.cup; const cupMeta = !C ? '—' : C.winner ? 'Campeón: ' + T(C.winner).short : LG.userInCup(st) ? C.rounds[C.round].label : (C.teams.indexOf(st.userTeam) < 0 ? 'No participas' : 'Eliminado');
     UI.show(MGR.top() + '<div class="wrap">' + next +
       (offers.length ? '<div class="panel"><h3>Ofertas recibidas</h3>' + MGR.offersHTML(offers) + '</div>' : '') +
       '<div class="cols-2"><nav class="menu" style="max-width:none">' +
       '<button class="bar small" data-act="lineup" data-key="1"><span class="n">1</span><span class="t">Alineación y táctica</span></button>' +
       '<button class="bar small" data-act="squad" data-key="2"><span class="n">2</span><span class="t">Plantilla</span></button>' +
-      '<button class="bar small" data-act="market" data-key="3"><span class="n">3</span><span class="t">Fichajes</span><span class="meta">' + (win ? 'ABIERTO' : 'CERRADO') + '</span></button>' +
+      '<button class="bar small" data-act="market" data-key="3"><span class="n">3</span><span class="t">Fichajes</span><span class="meta">ABIERTO</span></button>' +
       '<button class="bar small" data-act="table" data-key="4"><span class="n">4</span><span class="t">Clasificación</span></button>' +
       '<button class="bar small" data-act="calendar" data-key="5"><span class="n">5</span><span class="t">Calendario y resultados</span></button>' +
       '<button class="bar small" data-act="stats" data-key="6"><span class="n">6</span><span class="t">Estadísticas</span></button>' +
       '<button class="bar small" data-act="training" data-key="7"><span class="n">7</span><span class="t">Entrenamiento</span><span class="meta">' + esc(MGR.TRAIN[st.training][0]) + '</span></button>' +
       '<button class="bar small" data-act="finance" data-key="8"><span class="n">8</span><span class="t">Finanzas</span></button>' +
       '<button class="bar small" data-act="club" data-key="9"><span class="n">9</span><span class="t">Club, directiva y cantera</span></button>' +
+      '<button class="bar small" data-act="cup" data-key="c"><span class="n">C</span><span class="t">Copa del Rey</span><span class="meta">' + esc(cupMeta) + '</span></button>' +
       '<button class="bar small grey" data-act="quit" data-key="0"><span class="n">0</span><span class="t">Guardar y salir</span></button>' +
       '</nav><div class="panel"><h3>Noticias</h3>' + (news || '<p class="muted">Sin noticias.</p>') + '<div class="row" style="margin-top:8px"><button class="btn alt" data-act="news">Todas las noticias</button></div></div></div></div>',
       Object.assign(MGR.offerActs(() => MGR.hub()), {
         play: (el) => MGR.play(el.dataset.m),
         simday: () => { const s = LG.playDay(st, null); save(); MGR.dayResults(s); },
-        simall: () => UI.confirm('¿Simular todas las jornadas que quedan hasta el final de la temporada?', 'Simular', () => { let g = 0; while (!st.seasonOver && !st.fired && g++ < 60) { if (LG.userFixture(st)) { LG.playDay(st, null); } else LG.playDay(st, null); } save(); MGR.route(); }),
+        simall: () => UI.confirm('¿Simular todas las jornadas que quedan hasta el final de la temporada?', 'Simular', () => { let g = 0; while (!st.seasonOver && !st.fired && g++ < 90) { if (LG.userFixture(st)) { LG.playDay(st, null); } else LG.playDay(st, null); } save(); MGR.route(); }),
         lineup: () => MGR.lineup(), squad: () => MGR.squad(), market: () => MGR.market(), table: () => MGR.table(T(st.userTeam).div), calendar: () => MGR.calendar(), stats: () => MGR.stats(T(st.userTeam).div),
-        training: () => MGR.training(), finance: () => MGR.finance(), club: () => MGR.club(), news: () => MGR.news(), quit: () => { save(); UI.toast('Partida guardada.'); UI.mainMenu(); },
+        training: () => MGR.training(), finance: () => MGR.finance(), club: () => MGR.club(), cup: () => MGR.cup(), news: () => MGR.news(), quit: () => { save(); UI.toast('Partida guardada.'); UI.mainMenu(); },
       }));
   };
 
@@ -153,7 +160,8 @@
     MF.MUI.start({
       world: w, home: f.h, away: f.a, lhome: lh, laway: la, thome: LG.tacticsFor(st, f.h), taway: LG.tacticsFor(st, f.a),
       mode, human: mode === 'jugar' ? userSide : -1, userSide, weather, label: f.label, manager: true,
-      onEnd: (res) => { const s = LG.playDay(st, res); save(); MGR.dayResults(s); },
+      neutral: !!f.neutral, venue: f.venue || null, cup: f.comp === 'cup',
+      onEnd: (res) => { res.mode = mode; const s = LG.playDay(st, res); save(); MGR.dayResults(s); },
       onTactics: (t) => { st.tactics = Object.assign({}, t); },
     });
   };
@@ -164,7 +172,9 @@
     const sec = (title, list) => '<div class="panel"><h3>' + title + '</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + list.map(({ f, res }) => {
       const me = f.h === st.userTeam || f.a === st.userTeam;
       const g = res.events.filter((e) => e.type === 'goal');
-      return '<tr class="' + (me ? 'me' : '') + '"><td>' + GFX.badgeImg(T(f.h), 18) + ' ' + esc(T(f.h).short) + '</td><td class="c"><b>' + res.score[0] + ' - ' + res.score[1] + '</b></td><td>' + GFX.badgeImg(T(f.a), 18) + ' ' + esc(T(f.a).short) + '</td><td class="muted hide-sm" style="white-space:normal">' + g.map((e) => esc(st.world.players[e.pid] ? st.world.players[e.pid].short : '') + ' ' + e.min + '\'').join(', ') + '</td></tr>';
+      const extra = (res.et ? ' <small>pr.</small>' : '') + (res.pens ? '<br><small>pen. ' + res.pens[0] + '-' + res.pens[1] + '</small>' : '');
+      const wcls = (s) => (f.comp === 'cup' && res.winSide === s ? ' style="font-weight:800"' : '');
+      return '<tr class="' + (me ? 'me' : '') + '"><td' + wcls(0) + '>' + GFX.badgeImg(T(f.h), 18) + ' ' + esc(T(f.h).short) + '</td><td class="c"><b>' + res.score[0] + ' - ' + res.score[1] + '</b>' + extra + '</td><td' + wcls(1) + '>' + GFX.badgeImg(T(f.a), 18) + ' ' + esc(T(f.a).short) + '</td><td class="muted hide-sm" style="white-space:normal">' + g.map((e) => esc(st.world.players[e.pid] ? st.world.players[e.pid].short : '') + ' ' + e.min + '\'').join(', ') + '</td></tr>';
     }).join('') + '</tbody></table></div></div>';
     const d1 = summary.filter((x) => x.f.comp === 1), d2 = summary.filter((x) => x.f.comp === 2), po = summary.filter((x) => x.f.comp === 'playoff');
     const parts = [];
@@ -172,7 +182,15 @@
     const order = myDiv === 1 ? [d1, d2] : [d2, d1];
     order.forEach((arr) => { if (arr.length) parts.push(sec(esc(lbl(arr)), arr)); });
     if (po.length) parts.push(sec(esc(po[0].f.label), po));
-    UI.show(UI.head('Resultados de la jornada', null, null) + '<div class="wrap">' + parts.join('') +
+    const cupR = summary.filter((x) => x.f.comp === 'cup');
+    if (cupR.length) {
+      cupR.sort((x, y) => ((y.f.h === st.userTeam || y.f.a === st.userTeam) ? 1 : 0) - ((x.f.h === st.userTeam || x.f.a === st.userTeam) ? 1 : 0));
+      parts.push(sec('🏆 ' + esc(cupR[0].f.label), cupR));
+      const C = st.cup;
+      if (C.winner) parts.unshift('<div class="panel center"><div class="big">' + GFX.badgeImg(T(C.winner), 56) + ' ' + esc(T(C.winner).name) + '</div><p style="margin:4px 0 0">¡Campeón de la Copa del Rey ' + DB.SEASON_LABEL(C.season) + '! Final en el ' + esc(C.venue.stadium) + '.</p></div>');
+      else if (C.rounds[C.round]) parts.push('<div class="panel"><h3>Sorteo: ' + esc(C.rounds[C.round].label) + '</h3><p class="muted" style="margin:0">Se jugará antes de la jornada ' + (C.rounds[C.round].day + 1) + ' de Liga. Consulta los cruces en el apartado Copa del Rey.</p></div>');
+    }
+    UI.show(UI.head(cupR.length ? 'Resultados de Copa' : 'Resultados de la jornada', null, null) + '<div class="wrap">' + parts.join('') +
       '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="cont" data-key="Enter" autofocus><span class="n">▶</span><span class="t">Continuar</span></button><button class="bar small" data-act="tbl"><span class="n">4</span><span class="t">Ver clasificación</span></button></nav></div>',
       { cont: () => MGR.route(), tbl: () => MGR.table(myDiv) });
   };
@@ -204,12 +222,12 @@
     let actions = '', acts = {};
     if (mine) {
       const offers = st.offers.filter((o) => o.pid === pid);
-      actions = '<div class="panel"><h3>Mercado</h3>' + (offers.length ? MGR.offersHTML(offers) : '<p class="muted" style="margin:0 0 8px">' + (win ? 'Puedes ponerlo en venta para recibir ofertas.' : 'El mercado está cerrado.') + '</p>') +
+      actions = '<div class="panel"><h3>Mercado</h3>' + (offers.length ? MGR.offersHTML(offers) : '<p class="muted" style="margin:0 0 8px">' + (win ? 'Puedes ponerlo en venta para recibir ofertas.' : 'La temporada ha terminado.') + '</p>') +
         (win ? '<button class="btn" data-act="sell">Poner en venta</button>' : '') + '</div>';
       acts = Object.assign(MGR.offerActs(() => { UI.closeModal(); refresh(); }), { sell: () => { const r = LG.listForSale(st, pid); UI.toast(r.msg); save(); MGR.playerModal(pid, refresh); } });
-    } else if (T(p.team).div <= 3) {
-      const ask = LG.askingPrice(st, p);
-      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">El ' + esc(T(p.team).short) + ' valora al jugador en torno a ' + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.</p><div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">El mercado está cerrado. Abre en pretemporada y entre las jornadas 19 y 21.</p>') + '</div>';
+    } else if (T(p.team).div <= 4) {
+      const ask = LG.askingPrice(st, p); const fx = T(p.team).div === 4;
+      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">' + (fx ? 'Juega en la ' + esc(T(p.team).short) + '. Su club pide en torno a ' : 'El ' + esc(T(p.team).short) + ' valora al jugador en torno a ') + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.' + (fx ? ' Las estrellas solo aceptan proyectos a su altura.' : '') + '</p><div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">La temporada ha terminado: el mercado vuelve a abrir con la nueva temporada.</p>') + '</div>';
       acts = {
         offer: () => {
           const v = parseFloat(document.getElementById('offer').value); if (!(v > 0)) { UI.toast('Introduce un importe válido.'); return; }
@@ -235,10 +253,10 @@
     const per = 40; const pages = Math.max(1, Math.ceil(list.length / per)); F.page = Math.min(F.page, pages - 1);
     const shown = list.slice(F.page * per, F.page * per + per);
     const offers = st.offers.filter((o) => w.players[o.pid] && w.players[o.pid].team === st.userTeam);
-    UI.show(MGR.top() + UI.head('Mercado de fichajes', (win ? 'Ventana ABIERTA' : 'Ventana CERRADA · abre en pretemporada y entre las jornadas 19 y 21') + ' · Presupuesto ' + U.money(me.budget), 'back') + '<div class="wrap">' +
+    UI.show(MGR.top() + UI.head('Mercado de fichajes', (win ? 'Abierto toda la temporada' : 'Temporada terminada') + ' · Presupuesto ' + U.money(me.budget), 'back') + '<div class="wrap">' +
       (offers.length ? '<div class="panel"><h3>Ofertas por tus jugadores</h3>' + MGR.offersHTML(offers) + '</div>' : '') +
       '<div class="panel" style="display:flex;flex-direction:column;gap:8px"><div class="row"><div class="tabs">' + [['ALL', 'Todos'], ['POR', 'Porteros'], ['DEF', 'Defensas'], ['MED', 'Medios'], ['DEL', 'Delanteros']].map(([k, l]) => '<button class="tab ' + (F.line === k ? 'on' : '') + '" data-act="f" data-k="line" data-v="' + k + '">' + l + '</button>').join('') + '</div></div>' +
-      '<div class="row"><div class="tabs">' + [[0, 'Todas'], [1, 'Primera'], [2, 'Segunda'], [3, '1ª RFEF']].map(([k, l]) => '<button class="tab ' + (F.div === k ? 'on' : '') + '" data-act="f" data-k="div" data-v="' + k + '">' + l + '</button>').join('') + '</div>' +
+      '<div class="row"><div class="tabs">' + [[0, 'Todas'], [1, 'Primera'], [2, 'Segunda'], [3, '1ª RFEF'], [4, 'Otras ligas']].map(([k, l]) => '<button class="tab ' + (F.div === k ? 'on' : '') + '" data-act="f" data-k="div" data-v="' + k + '">' + l + '</button>').join('') + '</div>' +
       '<label class="f" style="flex:1;min-width:140px">Buscar jugador o club<input type="text" id="mq" value="' + esc(F.q) + '" placeholder="Nombre…"></label>' +
       '<label class="f" style="width:110px">Media mínima<input type="number" id="mmin" min="40" max="95" value="' + F.min + '"></label><label class="f" style="width:130px">Precio máx. (M€)<input type="number" id="mmax" min="0" step="1" value="' + (F.max || '') + '" placeholder="sin límite"></label><button class="btn" data-act="apply">Filtrar</button></div></div>' +
       '<div class="panel" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Pos</th><th>Jugador</th><th>Club</th><th class="num">Med</th><th class="num hide-sm">Edad</th><th class="num">Precio</th></tr></thead><tbody>' +
@@ -339,16 +357,57 @@
       });
   };
 
-  // ---------- club, directiva, historial y cantera
+  // ---------- club, directiva, palmarés, cantera e historial
+  MGR.TROPHY = { liga: ['🏆', 'Liga'], copa: ['🏅', 'Copa del Rey'], ucl: ['🌟', 'Champions'], uel: ['⭐', 'Europa League'], recopa: ['🥈', 'Recopa'], segunda: ['🥇', 'Liga de Segunda'], playoff: ['🎢', 'Playoff de ascenso'] };
+  MGR.palmaresHTML = function (t) {
+    const st = MGR.st; const real = t.titles || {}; const game = t.gtitles || {};
+    const tile = (k, n, cls) => '<div class="trophy ' + (cls || '') + '"><span class="ico" aria-hidden="true">' + MGR.TROPHY[k][0] + '</span><span class="num">' + n + '</span><span class="lbl">' + MGR.TROPHY[k][1] + '</span></div>';
+    const realT = ['liga', 'copa', 'ucl', 'uel', 'recopa'].filter((k) => real[k] > 0);
+    const gameT = ['liga', 'copa', 'segunda'].filter((k) => game[k] > 0);
+    const mine = (st.trophies || []).filter((x) => x.team === t.id);
+    return '<div class="panel"><h3>Palmarés del ' + esc(t.short) + '</h3>' +
+      '<p class="muted" style="margin:0 0 6px">Títulos oficiales reales hasta la temporada 2025-26 (Liga, Copa del Rey y competiciones europeas).</p>' +
+      (realT.length ? '<div class="trophies">' + realT.map((k) => tile(k, real[k])).join('') + '</div>' : '<p style="margin:0">Todavía sin títulos de Liga, Copa ni europeos. ¡Puede ser tu oportunidad!</p>') +
+      '<h3 style="margin-top:12px">Conquistados en esta partida</h3>' +
+      (gameT.length ? '<div class="trophies">' + gameT.map((k) => tile(k, game[k], 'game')).join('') + '</div>' : '<p class="muted" style="margin:0">Aún no ha ganado títulos en tu partida.</p>') +
+      (mine.length ? '<p style="margin:8px 0 0"><b>Con ' + esc(st.userName) + ' en el banquillo:</b> ' + mine.map((x) => MGR.TROPHY[x.comp][0] + ' ' + MGR.TROPHY[x.comp][1] + ' ' + DB.SEASON_LABEL(x.season)).join(' · ') + '</p>' : '') + '</div>';
+  };
   MGR.club = function () {
-    const st = MGR.st; const t = T(st.userTeam); const ys = LG.youthProspects(st);
+    const st = MGR.st; const t = T(st.userTeam); const ys = LG.youthProspects(st); const os = LG.objectiveStatus(st);
+    const career = (st.trophies || []);
     UI.show(MGR.top() + UI.head('Club', esc(t.name) + ' · ' + esc(t.city), 'back') + '<div class="wrap"><div class="grid2">' +
-      '<div class="panel"><h3>Directiva</h3><div class="kv"><b>Objetivo</b><span>' + esc(st.board.objective.text) + '</span><b>Confianza</b><span>' + Math.round(st.board.conf) + '%</span><b>Posición actual</b><span>' + (LG.position(st, t.id) || '—') + 'º</span></div><p class="muted">Si la confianza cae por debajo del 5% durante la temporada, o del 20% al terminarla, serás destituido.</p></div>' +
+      '<div class="panel"><h3>Directiva</h3><div class="kv"><b>Objetivo</b><span>' + esc(st.board.objective.text) + '</span><b>Situación</b><span>' + objChip(os) + ' ' + esc(os.text) + '</span><b>Confianza</b><span>' + Math.round(st.board.conf) + '%</span><b>Posición actual</b><span>' + (st.day > 0 && LG.position(st, t.id) ? LG.position(st, t.id) + 'º' : '—') + '</span></div><p class="muted">Si te alejas mucho del objetivo, la directiva te avisará y después te dará un ultimátum: si no reaccionas en unas jornadas, o si la confianza cae por debajo del 5%, serás destituido. Al terminar la temporada, por debajo del 20% también.</p></div>' +
+      MGR.palmaresHTML(t) + '</div>' +
+      '<div class="grid2"><div class="panel"><h3>Tu carrera</h3><div class="kv"><b>Temporadas completadas</b><span>' + ((st.ach && st.ach.seasons) || 0) + '</span><b>Clubes dirigidos</b><span>' + ((st.ach && st.ach.clubs) || [st.userTeam]).map((id) => esc(T(id).short)).join(', ') + '</span><b>Títulos</b><span>' + (career.length ? career.map((x) => MGR.TROPHY[x.comp][0] + ' ' + esc(T(x.team).short) + ' ' + DB.SEASON_LABEL(x.season)).join(' · ') : 'ninguno todavía') + '</span><b>Logros</b><span>' + MF.ACH.count() + ' de ' + MF.ACH.DEFS.length + '</span></div><div class="row" style="margin-top:8px"><button class="btn goldb" data-act="logros">🏅 Ver logros</button></div></div>' +
       '<div class="panel"><h3>Cantera</h3>' + (st.youthUsed ? '<p class="muted">Ya has subido un canterano esta temporada.</p>' : '<p class="muted" style="margin-top:0">Puedes subir a uno de estos juveniles al primer equipo (uno por temporada). Son jugadores generados por el juego.</p>') +
       ys.map((y, i) => '<div class="row" style="justify-content:space-between;border-top:1px solid #a3a8ad;padding:4px 0"><span>' + UI.ovr(y.ovr) + ' <span class="pos-tag l-' + DB.LINE_OF[y.role] + '">' + y.role + '</span> ' + esc(y.name) + ' · ' + y.age + ' años · potencial ' + (y.pot >= 80 ? 'alto' : y.pot >= 70 ? 'medio' : 'bajo') + '</span>' + (st.youthUsed ? '' : '<button class="btn" data-act="youth" data-i="' + i + '">Subir</button>') + '</div>').join('') + '</div></div>' +
-      '<div class="panel" style="padding:6px"><h3 style="margin:4px">Historial</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Temporada</th><th>Tu club</th><th>Puesto</th><th>Campeón de Liga</th><th class="hide-sm">Ascienden</th><th class="hide-sm">Pichichi</th></tr></thead><tbody>' +
-      (st.history.length ? st.history.map((h) => '<tr><td>' + DB.SEASON_LABEL(h.season) + '</td><td>' + esc(T(h.user.team).short) + '</td><td>' + (h.user.pos ? h.user.pos + 'º ' + (h.user.div === 1 ? '1ª' : '2ª') : '—') + (h.user.met ? ' ✓' : '') + '</td><td>' + esc(T(h.champ1).short) + '</td><td class="hide-sm">' + h.promoted.map((id) => esc(T(id).short)).join(', ') + '</td><td class="hide-sm">' + (h.pich1 ? esc(h.pich1[0]) + ' (' + h.pich1[2] + ')' : '') + '</td></tr>').join('') : '<tr><td colspan="6">Tu primera temporada está en marcha.</td></tr>') + '</tbody></table></div></div></div>',
-      { back: () => MGR.hub(), youth: (el) => { const r = LG.signYouth(st, +el.dataset.i); UI.toast(r.msg); save(); MGR.club(); } });
+      '<div class="panel" style="padding:6px"><h3 style="margin:4px">Historial</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Temporada</th><th>Tu club</th><th>Puesto</th><th>Campeón de Liga</th><th>Copa del Rey</th><th class="hide-sm">Ascienden</th><th class="hide-sm">Pichichi</th></tr></thead><tbody>' +
+      (st.history.length ? st.history.map((h) => '<tr><td>' + DB.SEASON_LABEL(h.season) + '</td><td>' + esc(T(h.user.team).short) + '</td><td>' + (h.user.pos ? h.user.pos + 'º ' + (h.user.div === 1 ? '1ª' : '2ª') : '—') + (h.user.met ? ' ✓' : '') + '</td><td>' + esc(T(h.champ1).short) + '</td><td>' + (h.cup ? esc(T(h.cup[0]).short) : '—') + '</td><td class="hide-sm">' + h.promoted.map((id) => esc(T(id).short)).join(', ') + '</td><td class="hide-sm">' + (h.pich1 ? esc(h.pich1[0]) + ' (' + h.pich1[2] + ')' : '') + '</td></tr>').join('') : '<tr><td colspan="7">Tu primera temporada está en marcha.</td></tr>') + '</tbody></table></div></div></div>',
+      { back: () => MGR.hub(), logros: () => UI.achievements(() => MGR.club()), youth: (el) => { const r = LG.signYouth(st, +el.dataset.i); UI.toast(r.msg); save(); MGR.club(); } });
+  };
+
+  // ---------- Copa del Rey: cuadro de eliminatorias
+  MGR.cup = function (sel) {
+    const st = MGR.st; const C = st.cup;
+    if (!C) { UI.show(MGR.top() + UI.head('Copa del Rey', null, 'back') + '<div class="wrap"><div class="panel"><p>La Copa del Rey arrancará con la próxima temporada.</p></div></div>', { back: () => MGR.hub() }); return; }
+    const r = sel === undefined ? Math.min(C.round, C.rounds.length - 1) : sel;
+    const rd = C.rounds[r];
+    const row = (t) => {
+      const me = t.h === st.userTeam || t.a === st.userTeam; const done = t.w !== null && t.w !== undefined;
+      const b = (id) => '<td' + (done && t.w === id ? ' style="font-weight:800"' : '') + '>' + GFX.badgeImg(T(id), 18) + ' ' + esc(T(id).short) + ' <span class="muted">' + (T(id).div === 3 ? '1ª RFEF' : T(id).div === 2 ? '2ª' : '1ª') + '</span></td>';
+      return '<tr class="' + (me ? 'me' : '') + '">' + b(t.h) + '<td class="c"><b>' + (done ? t.hg + ' - ' + t.ag : 'vs') + '</b>' + (t.et ? ' <small>pr.</small>' : '') + (t.pens ? '<br><small>pen. ' + t.pens[0] + '-' + t.pens[1] + '</small>' : '') + '</td>' + b(t.a) + '</tr>';
+    };
+    const top = Object.entries(C.goals || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([pid, g]) => { const p = st.world.players[pid]; return p ? '<tr><td>' + esc(p.name) + '</td><td>' + GFX.badgeImg(T(p.team), 18) + ' ' + esc(T(p.team).short) + '</td><td class="num"><b>' + g + '</b></td></tr>' : ''; }).join('');
+    UI.show(MGR.top() + UI.head('Copa del Rey ' + DB.SEASON_LABEL(C.season), C.teams.length + ' equipos · Primera, Segunda y Primera RFEF', 'back') + '<div class="wrap">' +
+      (C.winner ? '<div class="panel center"><div class="big">🏆 ' + GFX.badgeImg(T(C.winner), 48) + ' ' + esc(T(C.winner).name) + '</div><p style="margin:4px 0 0">Campeón de Copa. Subcampeón: ' + esc(T(C.runnerUp).name) + '.</p></div>' : '') +
+      '<div class="tabs">' + C.rounds.map((x, i) => '<button class="tab ' + (i === r ? 'on' : '') + '" data-act="rd" data-r="' + i + '">' + esc(x.label.replace(' de final', '')) + '</button>').join('') + '</div>' +
+      '<div class="cols-2"><div class="panel" style="padding:6px"><h3 style="margin:4px">' + esc(rd.label) + ' · antes de la jornada ' + (rd.day + 1) + '</h3>' +
+      (r === 0 && C.byes.length ? '<p class="muted" style="margin:4px">Exentos hasta dieciseisavos (mejores medias): ' + C.byes.map((id) => esc(T(id).short)).join(', ') + '.</p>' : '') +
+      (rd.ties[0] && rd.ties[0].neutral ? '<p style="margin:4px"><b>Final en campo neutral:</b> ' + esc(C.venue.stadium) + ' (' + esc(C.venue.city) + ').</p>' : '') +
+      '<div class="tbl-wrap"><table class="tbl"><tbody>' + rd.ties.map(row).join('') + '</tbody></table></div></div>' +
+      '<div class="panel"><h3>Reglamento</h3><p style="margin-top:0">Eliminatorias a <b>partido único</b> entre semana. Juega en casa el equipo con <b>peor media de jugadores</b>. Si hay empate: prórroga y, si persiste, penaltis. La <b>final</b> se disputa en campo neutral: el estadio del club más potente de Primera que no la juega.</p><p class="muted">Premios por ronda superada: ' + LG.CUP_PRIZE.map((x) => U.money(x)).join(' · ') + ' (+3 M€ al campeón).</p>' +
+      (top ? '<h3>Goleadores de Copa</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + top + '</tbody></table></div>' : '') + '</div></div></div>',
+      { back: () => MGR.hub(), rd: (el) => MGR.cup(+el.dataset.r) });
   };
 
   MGR.news = function () {
@@ -366,6 +425,7 @@
     A.sfxPlay(u.met ? 'win' : 'lose');
     UI.show(UI.title('Fin de temporada ' + DB.SEASON_LABEL(h.season)) + '<div class="wrap">' +
       '<div class="panel center"><div class="big">' + GFX.badgeImg(T(h.champ1), 48) + ' ' + esc(T(h.champ1).name) + ', campeón de Liga</div><p style="margin:6px 0 0">' + esc(T(u.team).short) + ' termina ' + (u.pos ? u.pos + 'º en ' + (u.div === 1 ? 'Primera' : 'Segunda') : 'la temporada') + '. ' + verdict + '</p>' +
+      (h.cup ? '<p style="margin:4px 0 0">🏆 Copa del Rey: <b>' + esc(T(h.cup[0]).name) + '</b> (final ante el ' + esc(T(h.cup[1]).short) + ')</p>' : '') +
       (h.pich1 ? '<p class="muted" style="margin:4px 0 0">Pichichi: ' + esc(h.pich1[0]) + ' (' + esc(T(h.pich1[1]).short) + ') con ' + h.pich1[2] + ' goles' + (h.mvp ? ' · Mejor jugador: ' + esc(h.mvp[0]) : '') + '</p>' : '') + '</div>' +
       '<div class="grid2"><div class="panel" style="padding:6px"><h3 style="margin:4px">Primera · arriba y abajo</h3>' + mini(t1.slice(0, 6).concat(t1.slice(-3)), 1) + '</div><div class="panel" style="padding:6px"><h3 style="margin:4px">Segunda</h3>' + mini(t2.slice(0, 6).concat(t2.slice(-4)), 2) + '</div></div>' +
       MGR.bracketHTML() +

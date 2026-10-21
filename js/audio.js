@@ -111,6 +111,7 @@
       case 'goal': A.crowdSwell(1.0, 4.0); [0, 0.12, 0.24, 0.42].forEach((d, i) => tone('square', mtof([72, 76, 79, 84][i]), t + d, i === 3 ? 0.5 : 0.12, 0.1, A.sfx, { lp: 3500, vib: i === 3 })); break;
       case 'card': tone('square', 520, t, 0.08, 0.08, A.sfx, { lp: 2500 }); break;
       case 'win': [72, 76, 79, 84, 79, 84].forEach((n, i) => tone('square', mtof(n), t + i * 0.13, 0.12 + (i === 5 ? 0.5 : 0), 0.09, A.sfx, { lp: 3000, vib: i === 5 })); break;
+      case 'logro': [79, 84, 88, 91].forEach((n, i) => tone('square', mtof(n), t + i * 0.08, i === 3 ? 0.4 : 0.07, 0.07, A.sfx, { lp: 4200, vib: i === 3 })); tone('sine', mtof(103), t + 0.32, 0.5, 0.04, A.sfx, { r: 0.4 }); break;
       case 'lose': [67, 63, 60].forEach((n, i) => tone('triangle', mtof(n), t + i * 0.25, 0.3, 0.12, A.sfx, {})); break;
     }
   };

@@ -10,9 +10,12 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Resultado**: marcador final al instante con el teletipo del partido.
 - **Liga Manager**: dirige a un club durante varias temporadas.
   - Alineación (6 sistemas), estilo, presión y tipo de pase.
-  - Plantilla, fichajes (ventanas de verano e invierno), ofertas recibidas, venta de jugadores.
+  - Plantilla y **mercado abierto toda la temporada**: Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1, Liga Portugal, Saudi Pro League, MLS, Süper Lig). Ofertas recibidas y venta de jugadores.
+  - **Copa del Rey** entre semana con Primera, Segunda (sin filiales) y Primera RFEF: partido único en el campo del equipo con peor media de plantilla, prórroga y penaltis si hay empate, y final en campo neutral (estadio del club más potente de Primera que no la juega).
   - Entrenamiento semanal, finanzas (taquilla, TV, salarios, precio de la entrada), cantera.
-  - Objetivos de la directiva: si no los cumples, te destituyen y recibes ofertas de otros clubes.
+  - Objetivo de la directiva visible al elegir club y durante la temporada (en objetivo / en riesgo / lejos). Si te alejas mucho, llegan avisos y un ultimátum, y te pueden destituir a mitad de temporada; después recibes ofertas de otros clubes.
+  - Palmarés real de cada club (Liga, Copa, Champions, Europa League, Recopa hasta 2025-26) y títulos ganados en la partida.
+  - **34 logros** desbloqueables (en el campo, mercado, títulos y carrera), guardados en el navegador para todas las partidas.
   - Clasificación con desempate por enfrentamiento directo, calendario, estadísticas (Pichichi, Zamora, asistencias, tarjetas, nota media).
   - **Ascensos y descensos**: bajan los 3 últimos de Primera; suben los 2 primeros de Segunda y el ganador del **playoff** (3º-6º, eliminatorias a doble partido; con empate global pasa el mejor clasificado). Los 4 últimos de Segunda bajan a Primera RFEF y suben 4 de la bolsa. Los filiales no pueden coincidir en categoría con su primer equipo.
   - Temporadas sucesivas: los jugadores envejecen, progresan o declinan y se retiran; se generan canteranos.
@@ -55,14 +58,15 @@ No necesita servidor ni compilación. También funciona abriendo `index.html` di
 ```
 index.html            página principal
 css/style.css         estética de menús y pantallas
-js/data/teams.js      46 clubes: nombre, estadio, aforo, presupuesto, colores de equipaciones
-js/data/players.js    1.091 jugadores: dorsal, demarcación, media, edad, tono de piel y atributos
+js/data/teams.js      58 clubes (+8 grupos «otras ligas»): nombre, estadio, aforo, presupuesto, colores, palmarés
+js/data/players.js    1.553 jugadores: dorsal, demarcación, media, edad, tono de piel y atributos
 js/util.js            utilidades
+js/achievements.js    sistema de logros
 js/db.js              formaciones, alineación automática, valor y salario de los jugadores
 js/sim.js             simulación rápida (modo Resultado y resto de partidos de la jornada)
 js/match.js           motor del partido en tiempo real (física, IA, faltas, fuera de juego, saques)
 js/render.js          dibujo cenital del partido (Canvas 2D)
-js/league.js          Liga Manager: calendario, clasificación, playoff, mercado, finanzas, temporadas
+js/league.js          Liga Manager: calendario, clasificación, playoff, Copa del Rey, mercado, objetivos, finanzas, temporadas
 js/graphics.js        escudos, camisetas y caras generados por código
 js/audio.js           música original y efectos sintetizados (Web Audio)
 js/ui.js, matchui.js, manager.js, main.js   pantallas
@@ -75,7 +79,8 @@ js/ui.js, matchui.js, manager.js, main.js   pantallas
 
 ## Datos y avisos
 
-- Plantillas obtenidas de las listas públicas de cada club en Wikipedia (octubre de 2026). Algunas listas estaban incompletas (Córdoba, Real Zaragoza, CD Mirandés): se completaron con información de la temporada anterior o con canteranos generados (marcados como "generado" en su ficha).
+- Plantillas de Primera y de la bolsa de Primera RFEF obtenidas de las listas públicas de cada club en Wikipedia; plantillas de Segunda (19 clubes, entre ellos el Real Valladolid) revisadas en octubre de 2026 con las listas publicadas por la prensa deportiva. Granada, Real Sociedad B y Celta Fortuna mantienen la lista de Wikipedia. Si a algún club le faltaban jugadores, se completó con canteranos generados.
+- Jugadores de otras ligas: selección de figuras con su club a octubre de 2026; aparecen agrupados por liga en el mercado.
 - Las **medias son estimaciones** basadas en el nivel y el rendimiento reciente de cada jugador; los equipos más potentes tienen mejores jugadores. El tono de piel es aproximado y se puede corregir en `players.js`.
 - Escudos, equipaciones, gráficos, música y efectos son **originales y generados por código**; no se usan escudos oficiales ni material de otros juegos. Los nombres de clubes y jugadores se usan solo para identificarlos.
 - Proyecto de aficionados sin relación con LaLiga, la RFEF ni los clubes.

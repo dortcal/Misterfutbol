@@ -51,7 +51,7 @@
     const w = cfg.world; const th = w.teams[cfg.home], ta = w.teams[cfg.away];
     const xi = (L) => L.xi.map((id, i) => { const p = w.players[id]; return '<div>' + p.num + ' · ' + esc(p.short) + ' <span class="muted">' + DB.FORMATIONS[L.formation][i][0] + '</span></div>'; }).join('');
     const clima = { dia: 'Tarde soleada', noche: 'Partido nocturno', lluvia: 'Lluvia intensa' }[cfg.weather || 'dia'];
-    UI.show(UI.head(cfg.label || 'Partido amistoso', esc(th.stadium) + ' · ' + clima, cfg.manager ? null : 'back') + '<div class="wrap">' +
+    UI.show(UI.head(cfg.label || 'Partido amistoso', esc(cfg.venue || th.stadium) + (cfg.neutral ? ' (campo neutral)' : '') + ' · ' + clima, cfg.manager ? null : 'back') + '<div class="wrap">' +
       '<div class="panel vs-card"><div>' + GFX.badgeImg(th, 72) + '<div class="tn">' + esc(th.name) + '</div><img src="' + GFX.shirt(cfg.kits[0], 64) + '" width="40" height="40" alt=""></div><div class="vs">VS</div><div>' + GFX.badgeImg(ta, 72) + '<div class="tn">' + esc(ta.name) + '</div><img src="' + GFX.shirt(cfg.kits[1], 64) + '" width="40" height="40" alt=""></div></div>' +
       '<div class="grid2"><div class="panel"><h3>' + esc(th.short) + ' · ' + cfg.lhome.formation + '</h3><div class="grid2" style="gap:2px 10px;font-size:15px">' + xi(cfg.lhome) + '</div></div><div class="panel"><h3>' + esc(ta.short) + ' · ' + cfg.laway.formation + '</h3><div class="grid2" style="gap:2px 10px;font-size:15px">' + xi(cfg.laway) + '</div></div></div>' +
       (cfg.human >= 0 ? '<div class="panel"><b>Controles (un solo botón):</b> flechas o WASD para moverte; el jugador sigue corriendo en la última dirección. <b>Espacio</b> (o X/Z): toque corto = pase, mantener = tiro (más tiempo, más potencia). Justo después de tirar, pulsa hacia un lado para dar efecto al balón. Sin balón: toque = entrada o cambio de jugador, mantener = segada más larga. P = pausa. En pantalla táctil: joystick y botón de acción.</div>' : '') +
@@ -132,7 +132,7 @@
     const hooks = {};
     const m = new MF.Match(w, {
       home: cfg.home, away: cfg.away, lhome: cfg.lhome, laway: cfg.laway, thome: cfg.thome, taway: cfg.taway, kits: cfg.kits,
-      human: cfg.human, kickoff: cfg.kickoff, dirHome: cfg.dirHome, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: false, waitHalftime: true,
+      human: cfg.human, kickoff: cfg.kickoff, dirHome: cfg.dirHome, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: !!cfg.neutral, waitHalftime: true,
       manualSubs: cfg.userSide !== undefined && !S.autoSubs ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
     });
     MUI.m = m; MUI.R = null;
@@ -369,6 +369,8 @@
     UI.inMatch = false;
     const us = cfg.userSide !== undefined ? cfg.userSide : cfg.human;
     if (us >= 0) A.sfxPlay(res.score[us] > res.score[1 - us] ? 'win' : res.score[us] < res.score[1 - us] ? 'lose' : 'click');
+    if (MF.ACH) MF.ACH.matchEnd(cfg, res);
+    const cupDraw = cfg.cup && res.score[0] === res.score[1];
     const mvpId = Object.keys(res.ratings).sort((a, b) => res.ratings[b] - res.ratings[a])[0];
     const mvp = w.players[mvpId];
     const evs = res.events.filter((e) => ['goal', 'red', 'yellow', 'sub', 'injury'].indexOf(e.type) >= 0);
@@ -384,7 +386,8 @@
     const srow = (l, a, b) => MUI.statRow(l, a, b, cfg.kits);
     UI.show(UI.head('Final del partido', esc(cfg.label || 'Partido amistoso'), null) + '<div class="wrap">' +
       '<div class="panel"><div class="bigscore">' + GFX.badgeImg(th, 56) + '<span>' + esc(th.abbr) + '</span><span>' + res.score[0] + '</span><span class="sep">-</span><span>' + res.score[1] + '</span><span>' + esc(ta.abbr) + '</span>' + GFX.badgeImg(ta, 56) + '</div>' +
-      (evs.length ? '<div class="evlist" style="margin-top:10px">' + rows + '</div>' : '<p class="center muted">Sin goles ni incidencias destacadas.</p>') + '</div>' +
+      (evs.length ? '<div class="evlist" style="margin-top:10px">' + rows + '</div>' : '<p class="center muted">Sin goles ni incidencias destacadas.</p>') +
+      (cupDraw ? '<p class="center" style="margin:10px 0 0"><b>Empate al final de los 90 minutos:</b> la eliminatoria se decide en la prórroga y, si hace falta, en la tanda de penaltis. Pulsa Continuar para conocer el desenlace.</p>' : '') + '</div>' +
       '<div class="grid2"><div class="panel" style="display:grid;gap:6px"><h3>Estadísticas</h3>' + srow('Posesión %', st.poss[0], st.poss[1]) + srow('Tiros', st.shots[0], st.shots[1]) + srow('A puerta', st.onTarget[0], st.onTarget[1]) + srow('Córners', st.corners[0], st.corners[1]) + srow('Faltas', st.fouls[0], st.fouls[1]) + '</div>' +
       '<div class="panel"><h3>Mejor jugador</h3>' + (mvp ? '<div class="pcard"><img class="face" src="' + GFX.face(mvp, w.teams[mvp.team].kit.home.p, 76) + '" width="76" height="76" alt=""><div><div class="big">' + esc(mvp.name) + '</div><div>' + esc(w.teams[mvp.team].short) + ' · nota ' + res.ratings[mvpId].toFixed(1) + '</div></div></div>' : '') + '</div></div>' +
       '<nav class="menu" style="max-width:none">' + (cfg.onEnd ? '<button class="bar gold" data-act="cont" data-key="Enter" autofocus><span class="n">▶</span><span class="t">Continuar</span></button>' :
@@ -397,11 +400,11 @@
   MUI.teletipo = function (cfg) {
     const w = cfg.world; const th = w.teams[cfg.home], ta = w.teams[cfg.away];
     A.init();
-    const res = cfg.precomputed || MF.SIM.play(w, { home: cfg.home, away: cfg.away, lhome: cfg.lhome, laway: cfg.laway, neutral: false });
+    const res = cfg.precomputed || MF.SIM.play(w, { home: cfg.home, away: cfg.away, lhome: cfg.lhome, laway: cfg.laway, neutral: !!cfg.neutral });
     const evs = res.events.filter((e) => ['goal', 'red', 'injury'].indexOf(e.type) >= 0);
     UI.show(UI.head(cfg.label || 'Partido amistoso', 'Resultado', null) + '<div class="wrap">' +
       '<div class="panel"><div class="bigscore">' + GFX.badgeImg(th, 56) + '<span>' + esc(th.abbr) + '</span><span id="s0">0</span><span class="sep">-</span><span id="s1">0</span><span>' + esc(ta.abbr) + '</span>' + GFX.badgeImg(ta, 56) + '</div></div>' +
-      '<div class="teletipo" aria-live="polite"><div>&gt; ' + esc(th.stadium.toUpperCase()) + ' · MINUTO <span id="tmin">0</span></div><div id="tl"></div></div>' +
+      '<div class="teletipo" aria-live="polite"><div>&gt; ' + esc((cfg.venue || th.stadium).toUpperCase()) + ' · MINUTO <span id="tmin">0</span></div><div id="tl"></div></div>' +
       '<nav class="menu" style="max-width:none"><button class="bar" data-act="skip" data-key="Enter" id="skipb" autofocus><span class="n">»</span><span class="t">Ver resultado final</span></button></nav></div>',
       { skip: () => { min = 91; } });
     let min = 0, k = 0; const sc = [0, 0];

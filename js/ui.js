@@ -62,6 +62,31 @@
     document.body.appendChild(d); setTimeout(() => d.remove(), ms || 3200);
   };
 
+  // aviso de logro desbloqueado (se apilan si llegan varios a la vez)
+  UI.achQueue = [];
+  UI.achToast = function (d) {
+    UI.achQueue.push(d); if (UI.achQueue.length > 1) return;
+    const next = () => {
+      const x = UI.achQueue[0]; if (!x) return;
+      const el = document.createElement('div'); el.className = 'ach-toast'; el.setAttribute('role', 'status');
+      el.innerHTML = '<span class="ach-ico" aria-hidden="true">' + x.icon + '</span><span><small>LOGRO DESBLOQUEADO</small><b>' + U.esc(x.title) + '</b><span>' + U.esc(x.desc) + '</span></span>';
+      document.body.appendChild(el); A.sfxPlay('logro');
+      setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); UI.achQueue.shift(); next(); }, 350); }, 3600);
+    };
+    next();
+  };
+  if (MF.ACH) MF.ACH.onUnlock = (d) => UI.achToast(d);
+
+  // ---------- LOGROS
+  UI.achievements = function (back) {
+    const ACH = MF.ACH; const got = ACH.all(); const n = ACH.count(), tot = ACH.DEFS.length;
+    const fmt = (ts) => { try { return new Date(ts).toLocaleDateString('es-ES'); } catch (e) { return ''; } };
+    UI.show(UI.head('Logros', n + ' de ' + tot + ' desbloqueados', 'back') + '<div class="wrap">' +
+      '<div class="panel"><div class="row" style="gap:10px"><span class="meter" style="flex:1;max-width:none"><i style="width:' + Math.round(n / tot * 100) + '%"></i></span><b>' + Math.round(n / tot * 100) + '%</b></div><p class="muted" style="margin:6px 0 0">Los logros se guardan en este navegador y valen para todas tus partidas.</p></div>' +
+      Object.entries(ACH.CATS).map(([c, l]) => '<div class="panel"><h3>' + l + '</h3><div class="ach-grid">' + ACH.DEFS.filter((d) => d.cat === c).map((d) => '<div class="ach ' + (got[d.id] ? 'on' : 'off') + '"><span class="ach-ico" aria-hidden="true">' + (got[d.id] ? d.icon : '🔒') + '</span><span><b>' + U.esc(d.title) + '</b><span>' + U.esc(d.desc) + '</span>' + (got[d.id] ? '<small>Conseguido el ' + fmt(got[d.id]) + '</small>' : '<small>Bloqueado</small>') + '</span></div>').join('') + '</div></div>').join('') + '</div>',
+      { back: () => (back ? back() : UI.mainMenu()) });
+  };
+
   UI.modalOpen = () => !!document.querySelector('.modal-bg');
   UI.modal = function (title, body, acts) {
     UI.closeModal();
@@ -114,8 +139,9 @@
       '<button class="bar" data-act="friendly" data-key="1" autofocus><span class="n">1</span><span class="t">Partido amistoso</span></button>' +
       '<button class="bar" data-act="manager" data-key="2"><span class="n">2</span><span class="t">Liga manager</span></button>' +
       '<div class="strip">Plantillas actualizadas · Primera y Segunda <span class="led">26/27</span>' + (slot ? '<span class="spacer"></span>Partida: ' + esc(slot.team) + ' · J' + (slot.day + 1) : '') + '</div>' +
-      '<button class="bar small grey" data-act="options" data-key="3"><span class="n">3</span><span class="t">Opciones</span></button>' +
-      '<button class="bar small grey" data-act="help" data-key="4"><span class="n">4</span><span class="t">Cómo se juega</span></button>' +
+      '<button class="bar small" data-act="logros" data-key="3"><span class="n">3</span><span class="t">Logros</span><span class="meta">' + MF.ACH.count() + '/' + MF.ACH.DEFS.length + '</span></button>' +
+      '<button class="bar small grey" data-act="options" data-key="4"><span class="n">4</span><span class="t">Opciones</span></button>' +
+      '<button class="bar small grey" data-act="help" data-key="5"><span class="n">5</span><span class="t">Cómo se juega</span></button>' +
       '</nav>' +
       '<div class="foot"><button class="btn alt" data-act="sound">' + (A.on ? '♪ SONIDO: SÍ' : '♪ SONIDO: NO') + '</button>' + (UI.canInstall ? '<button class="btn alt" data-act="install">Instalar app</button>' : '') + '</div>' +
       '<p class="muted center" style="max-width:640px;margin:0">Juego independiente hecho por aficionados. Escudos y equipaciones generados por el juego; nombres de clubes y jugadores usados solo para identificarlos. Plantillas a octubre de 2026.</p>',
@@ -123,6 +149,7 @@
         friendly: () => UI.friendly(),
         manager: () => MF.MGR.start(),
         options: () => UI.options(),
+        logros: () => UI.achievements(),
         help: () => UI.help(),
         install: () => { if (UI.installEvt) { UI.installEvt.prompt(); UI.installEvt = null; UI.canInstall = false; } },
       });
@@ -168,7 +195,7 @@
       '<div class="grid2"><div class="panel"><h2>Partido amistoso</h2><p>Elige local y visitante entre los 42 equipos de Primera y Segunda 2026/27 y decide cómo vivir el partido:</p>' +
       '<p><b>JUGAR</b>: controlas al jugador marcado con el aro amarillo. <b>VISIONADO</b>: ves el partido con cámara cenital y puedes acelerar, pausar o hacer cambios. <b>RESULTADO</b>: el marcador final al instante con el teletipo del partido.</p></div>' +
       '<div class="panel"><h2>Controles</h2><p style="margin-top:0">Un solo botón, como en los clásicos: <b>Espacio</b> (también X, Z, J o K) o el botón naranja en pantalla táctil.</p><div class="kv"><b>Mover</b><span>Flechas o WASD · joystick. El jugador sigue corriendo en la última dirección.</span><b>Pase</b><span>Toque corto. El compañero recibe mejor cuanto mejor pasas tú y mejor controla él.</span><b>Tiro</b><span>Mantén pulsado: cuanto más tiempo, más potencia. Apunta con la dirección.</span><b>Efecto</b><span>Justo después de tirar, pulsa hacia un lado para curvar el balón.</span><b>Sin balón</b><span>Toque = entrada (o cambio de jugador si estás lejos) · mantener = segada más larga y fuerte (roba mucho, pero si es dura o por detrás puede ser falta y tarjeta)</span><b>Tocar jugadores</b><span>Toca o haz clic en un compañero para pasarle el balón (también en saques de centro, córner, falta, penalti y banda). Toca a un rival y tu defensa más cercano irá a por él con una segada.</span><b>Mantener en un punto</b><span>Mantén pulsado en cualquier zona del campo y el balón irá allí. Sobre la portería rival es un tiro colocado muy preciso.</span><b>Saques</b><span>En tus saques el balón espera a que actúes (si no haces nada en 12 segundos, saca la máquina). Antes del saque de centro cada equipo se queda en su campo.</span><b>Pausa</b><span>P o Esc</span></div></div>' +
-      '<div class="panel"><h2>Liga Manager</h2><p>Dirige a un club de Primera o Segunda: alineación y táctica, fichajes, entrenamiento, finanzas y cantera. Cumple el objetivo de la directiva o te destituirán.</p>' +
+      '<div class="panel"><h2>Liga Manager</h2><p>Dirige a un club de Primera o Segunda: alineación y táctica, fichajes, entrenamiento, finanzas y cantera. Al elegir club verás el objetivo de la directiva; si durante la temporada te alejas mucho de él, recibirás avisos, un ultimátum y puedes ser destituido.</p><p>El <b>mercado está abierto toda la temporada</b>: puedes fichar en Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1…), aunque las grandes figuras solo aceptan proyectos ambiciosos.</p><p><b>Copa del Rey</b>: la juegan Primera, Segunda (sin filiales) y Primera RFEF. Eliminatorias a partido único entre semana en el campo del equipo con peor media; si hay empate, prórroga y penaltis. La final se juega en campo neutral, en el estadio de uno de los grandes de Primera.</p>' +
       '<p>Al final de la temporada descienden los 3 últimos de Primera. En Segunda suben los 2 primeros y el ganador del playoff a doble partido entre el 3º y el 6º (en caso de empate global pasa el mejor clasificado). Los 4 últimos de Segunda bajan a Primera RFEF.</p></div>' +
       '<div class="panel"><h2>Medias y datos</h2><p>Las medias de los jugadores son una estimación basada en su nivel y rendimiento reciente. Los equipos más potentes tienen mejores jugadores. Las plantillas proceden de las listas públicas de los clubes en octubre de 2026.</p><p class="muted">VEL velocidad · RES resistencia · AGR agresividad · CAL calidad · PAS pase · TIR tiro · REG regate · DEF defensa · POR portería.</p></div></div></div>',
       {});
