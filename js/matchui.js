@@ -22,6 +22,7 @@
       case 'penalty': return '¡PENALTI a favor del ' + T(ev.side) + '!';
       case 'offside': return 'Fuera de juego de ' + P(ev.pid) + '.';
       case 'corner': return 'Córner para el ' + T(ev.side) + '.';
+      case 'goalkick': return 'Fuera de meta. Saque de puerta para el ' + T(ev.side) + '.';
       case 'header': return 'Remate de cabeza de ' + P(ev.pid) + '…';
       case 'sub': return 'Cambio en el ' + T(ev.side) + ': entra ' + P(ev.pid) + ', sale ' + P(ev.out) + '.';
       case 'injury': return P(ev.pid) + ' se duele en el suelo. Parece lesionado.';
@@ -154,6 +155,7 @@
         A.say('¡Gol! ' + (ev.own ? 'en propia puerta' : 'de ' + (p ? p.short : '')));
       }
       if (ev.type === 'yellow' || ev.type === 'red') { showBanner('<span class="card" style="background:' + (ev.type === 'red' ? '#e5202e' : '#ffd60a') + '"></span><span class="sm">' + esc(w.players[ev.pid].short) + '</span>', 1.8); A.sfxPlay('card'); }
+      if (ev.type === 'goalkick') showBanner('<div class="big" style="font-size:clamp(30px,7vw,64px)">FUERA DE META</div>', 1.6);
       if (ev.type === 'penalty') showBanner('<div class="big" style="font-size:clamp(36px,9vw,80px)">¡PENALTI!</div>', 2);
       if (ev.type === 'halftime') { A.sfxPlay('whistle', 2); setTimeout(() => halftime(), 900); }
       if (ev.type === 'end') A.sfxPlay('whistle', 3);
@@ -318,6 +320,7 @@
         root.querySelector('#clk').textContent = U.pad2(Math.min(m.dispMinute(), 99)) + '\'';
         if (radar) R.drawRadar(radar);
       }
+      if (m.ctrl && m.ctrl.isGK && m.ball.owner === m.ctrl && m.gkAim !== null && m.gkAim !== undefined && tickT <= 0.31) { tick.textContent = 'Portero: apunta y pulsa ' + (touch ? 'el botón' : 'ESPACIO') + ' (mantén para despejar largo)'; tick.hidden = false; tickT = 0.3; }
       if (m.waitingHuman && m.phaseT <= 0) { tick.textContent = touch ? 'Pulsa el botón para sacar de centro' : 'Pulsa ESPACIO para sacar de centro'; tick.hidden = false; tickT = 0.3; }
       if (tickT > 0) { tickT -= dt; if (tickT <= 0) tick.hidden = true; }
       if (banT > 0) { banT -= dt; if (banT <= 0) ban.innerHTML = ''; }

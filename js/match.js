@@ -263,7 +263,7 @@
     if (this.human < 0) { this.ctrl = null; return; }
     const s = this.human; const b = this.ball;
     if (b.owner && b.owner.side === s && !b.owner.isGK) { this.ctrl = b.owner; return; }
-    if (b.owner && b.owner.side === s && b.owner.isGK) { if (this.ctrl && this.ctrl.isGK) this.ctrl = null; if (this.ctrl) return; }
+    if (b.owner && b.owner.side === s && b.owner.isGK) { this.ctrl = b.owner; return; } // el portero con el balón lo controla la persona
     if (this.input.switch) { this.input.switch = false; this.ctrl = null; this.switchLock = 0; }
     if (this.ctrl && (this.ctrl.off || this.ctrl.isGK)) this.ctrl = null;
     this.switchLock = (this.switchLock || 0) - STEP;
@@ -609,6 +609,8 @@
     const mag = Math.hypot(I.mx, I.my);
     const hasBall = b.owner === p;
     if (mag > 0.15) { I.lastA = Math.atan2(I.my, I.mx); I.idleT = 0; } else I.idleT += dt || 0;
+    if (hasBall && p.isGK) { this.humanKeeper(p, dt, mag); return; }
+    this.gkAim = null;
     // al recibir el balón sin tocar el mando, arranca hacia la portería rival
     if (hasBall && this._lastHumanOwner !== p) { if (mag <= 0.15) I.lastA = this.dir[p.side] === 1 ? 0 : Math.PI; }
     this._lastHumanOwner = hasBall ? p : null;
@@ -663,11 +665,46 @@
     }
   };
 
+  // Portero de la persona con el balón en las manos (blocaje o saque de puerta):
+  // se mueve dentro de su área, apunta con el mando y saca donde quiera.
+  // Toque = pase en esa dirección · mantener = despeje largo (más tiempo, más lejos).
+  MP.humanKeeper = function (p, dt, mag) {
+    const I = this.input; const s = p.side;
+    if (this._lastHumanOwner !== p) { this.gkAim = this.dir[s] === 1 ? 0 : Math.PI; p.gkHold = 0; I.lastA = null; }
+    this._lastHumanOwner = p;
+    p.gkHold = (p.gkHold || 0) + (dt || 0);
+    if (mag > 0.15) this.gkAim = Math.atan2(I.my, I.mx);
+    // movimiento lento dentro del área propia
+    const gx = this.ownGoalX(s);
+    if (mag > 0.15) {
+      p.tx = U.clamp(p.x + Math.cos(this.gkAim) * 3, Math.min(gx, gx + this.dir[s] * (BOX_D - 1)), Math.max(gx, gx + this.dir[s] * (BOX_D - 1)));
+      p.ty = U.clamp(p.y + Math.sin(this.gkAim) * 3, PW / 2 - BOX_W / 2 + 1, PW / 2 + BOX_W / 2 - 1); p.want = 0.45 * Math.min(1, mag);
+    } else { p.tx = p.x; p.ty = p.y; p.want = 0; }
+    p.humanMove = true; p.face = this.gkAim;
+    const a = this.gkAim;
+    // si la persona no saca en 8 segundos, el portero saca solo
+    if (!I.btnRel && p.gkHold > 8) { this.gkAim = null; this.longBall(p); return; }
+    if (!I.btnRel) return;
+    I.btnRel = false; const held = I.btnHeldT || 0;
+    this.gkAim = null;
+    if (held < 0.22) {
+      const bp = this.bestPass(p, a);
+      if (bp && Math.abs(Math.atan2(Math.sin(Math.atan2(bp.ty - p.y, bp.tx - p.x) - a), Math.cos(Math.atan2(bp.ty - p.y, bp.tx - p.x) - a))) < 0.6) this.pass(p, bp.r, bp.tx, bp.ty, bp.loft);
+      else { const v = 16; this.kick(p, Math.cos(a) * v, Math.sin(a) * v, 0, 'pass', null); }
+    } else {
+      const power = U.clamp((held - 0.22) / 0.55, 0, 1);
+      const dist = 25 + 40 * power; const T = 0.9 + dist / 26; const v = dist / T;
+      this.kick(p, Math.cos(a) * v, Math.sin(a) * v, GRAV * T / 2, 'clear', null);
+      this.ball.curveT = 0.6;
+    }
+  };
+
   // --------- entradas, faltas y tarjetas
   MP.tackles = function (dt) {
     const b = this.ball; const c = b.owner;
     this.all().forEach((p) => { p.tackleCd -= dt; p.kickCd -= dt; });
     if (!c) return;
+    if (c.isGK && this.inBox(c.side, c.x, c.y)) return; // nadie puede entrar al portero con el balón en las manos
     const hc = this.ctrl;
     if (hc && hc.side !== c.side && hc.state === 'slide' && !hc.slideDone && U.dist(hc.x, hc.y, c.x, c.y) < 1.8) { hc.slideDone = true; this.tryTackle(hc, c, true, true); if (b.owner !== c) return; }
     for (const p of this.P[1 - c.side]) {
@@ -1012,6 +1049,7 @@
         this.place('corner', 1 - defSide, gx === 0 ? 0.3 : PL - 0.3, b.y < PW / 2 ? 0.3 : PW - 0.3);
       } else {
         this.say('goalkick', { side: defSide });
+        if (this.hooks.sound) this.hooks.sound('whistle', this);
         this.place('goalkick', defSide, gx === 0 ? 5.5 : PL - 5.5, PW / 2 + (b.y < PW / 2 ? -9 : 9));
       }
       return;
@@ -1074,6 +1112,7 @@
         this.shoot(b.owner, null, 0.9); return;
       }
     }
+    if (rs.type === 'goalkick' && s === this.human && p.isGK) { this.ctrl = p; p.gkHold = 0; return; }
     if (rs.type === 'goalkick') {
       const bp = this.bestPass(p);
       if (bp && bp.pOk > 0.6 && this.R() < 0.5) this.pass(p, bp.r, bp.tx, bp.ty, bp.loft); else this.longBall(p);

@@ -28,7 +28,11 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
 | Efecto en el tiro | Justo después de tirar, pulsa hacia un lado | Joystick hacia un lado |
 | Sin balón: entrada (toque) o cambio de jugador si estás lejos | Toque | Toque |
 | Sin balón: segada más larga | Mantener el botón | Mantener el botón |
+| Portero con el balón (blocaje o saque de puerta): apuntar | Flechas | Joystick |
+| Portero: pase (toque) o despeje largo (mantener) | Botón | Botón |
 | Pausa | P o Esc | Botón ❚❚ |
+
+Cuando un disparo sale por la línea de fondo, el árbitro pita y aparece "FUERA DE META". Si tu portero bloca el balón o tienes saque de puerta, decides tú dónde sacar: aparece una flecha de puntería (si no sacas en 8 segundos, saca solo).
 
 El receptor de un pase tiene un "imán": el balón se curva hacia sus pies y lo controla mejor cuanto mejor pasa quien lo envía y mejor controla quien lo recibe. La cámara muestra **todo el campo desde arriba** y no se mueve (en Opciones puedes elegir una cámara de seguimiento).
 

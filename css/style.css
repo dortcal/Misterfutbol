@@ -308,3 +308,4 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 .abtn.act { width: 104px; height: 104px; font-size: 14px; line-height: 1.15; text-align: center; bottom: max(26px, env(safe-area-inset-bottom, 0px)); background: radial-gradient(circle at 35% 30%, #ffd36b, #e08a12 55%, #b5530a); }
 .match:not(.has-touch) .power { right: auto; left: 50%; transform: translateX(-50%); bottom: max(46px, env(safe-area-inset-bottom, 0px)); width: 160px; height: 10px; }
 .has-touch .power { bottom: calc(max(26px, env(safe-area-inset-bottom, 0px)) + 116px); right: max(30px, env(safe-area-inset-right, 0px)); }
+.keys-help { bottom: auto; top: calc(max(8px, env(safe-area-inset-top, 0px)) + 48px); }

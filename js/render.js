@@ -306,6 +306,17 @@
     }
     // árbitro
     const ref = m.ref; this.drawPlayer(g, { x: ref.x, y: ref.y, face: ref.face, anim: ref.anim, run: Math.hypot(ref.vx, ref.vy), d: { tone: 2, hair: 0 }, state: '' }, { p: '#111111', s: '#222222', pat: 'plain', sh: '#111111', so: '#111111' }, true);
+    // flecha de puntería del portero controlado
+    if (m.gkAim !== null && m.gkAim !== undefined && m.ctrl && m.ctrl.isGK && m.ball.owner === m.ctrl) {
+      const p = m.ctrl, a = m.gkAim, L = 10;
+      g.strokeStyle = 'rgba(255,225,77,0.9)'; g.lineWidth = 0.12 * this.k; g.setLineDash([0.8, 0.6]);
+      g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + Math.cos(a) * L, p.y + Math.sin(a) * L); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#ffe14d'; g.beginPath();
+      g.moveTo(p.x + Math.cos(a) * (L + 1.6), p.y + Math.sin(a) * (L + 1.6));
+      g.lineTo(p.x + Math.cos(a + 2.6) * 1.2 + Math.cos(a) * L, p.y + Math.sin(a + 2.6) * 1.2 + Math.sin(a) * L);
+      g.lineTo(p.x + Math.cos(a - 2.6) * 1.2 + Math.cos(a) * L, p.y + Math.sin(a - 2.6) * 1.2 + Math.sin(a) * L);
+      g.fill();
+    }
     this.drawBall(g);
     this.drawGoals(g);
     // partículas
