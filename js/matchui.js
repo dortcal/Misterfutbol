@@ -18,7 +18,7 @@
       case 'post': return pick(['¡Al palo! ¡Uyyy!', '¡La madera lo evita!', '¡El poste escupe el balón!']);
       case 'yellow': return 'Tarjeta amarilla para ' + P(ev.pid) + '.';
       case 'red': return '¡Roja! ' + P(ev.pid) + ' se va a la calle.';
-      case 'foul': return pick(['Falta de ' + P(ev.pid) + '.', 'El árbitro pita falta.', 'Entrada dura de ' + P(ev.pid) + '.']);
+      case 'foul': return ev.sev > 0.5 ? pick(['¡Segada durísima de ' + P(ev.pid) + '!', '¡Qué entrada de ' + P(ev.pid) + '! El árbitro saca la tarjeta del bolsillo…']) : pick(['Falta de ' + P(ev.pid) + '.', 'El árbitro pita falta.', 'Entrada dura de ' + P(ev.pid) + '.']);
       case 'penalty': return '¡PENALTI a favor del ' + T(ev.side) + '!';
       case 'offside': return 'Fuera de juego de ' + P(ev.pid) + '.';
       case 'corner': return 'Córner para el ' + T(ev.side) + '.';
@@ -125,7 +125,7 @@
       '<div class="hud-top"><div class="score" aria-live="polite"><span class="chip" style="background:' + cfg.kits[0].p + '"></span><span class="tm">' + esc(th.abbr) + '</span><span class="g" id="g0">0</span><span class="g" id="g1">0</span><span class="tm">' + esc(ta.abbr) + '</span><span class="chip" style="background:' + cfg.kits[1].p + '"></span><span class="clock" id="clk">00\'</span></div>' +
       '<div class="hud-btns">' + (cfg.human < 0 ? '<button class="hbtn" id="spd" aria-label="Velocidad">x1</button>' : '') + '<button class="hbtn" id="snd" aria-label="Sonido">' + (A.on ? '♪' : '✕') + '</button><button class="hbtn" id="pau" aria-label="Pausa">❚❚</button></div></div>' +
       ((S.camera || 'total') === 'total' ? '' : '<canvas class="radar" width="110" height="72"></canvas>') + '<div class="ticker" id="tick" hidden></div><div class="banner" id="ban"></div>' +
-      (touch ? '<div class="touch"><div class="joy" id="joy"><div class="knob"></div></div><div class="abtn shoot act" id="ba">PASE<br>TIRO</div><div class="power" id="pow" hidden><i></i></div></div>' : (cfg.human >= 0 ? '<div class="keys-help">Flechas mover · ESPACIO: toque = pase, mantener = tiro / segada · tras tirar, dirección = efecto · P pausa</div><div class="power" id="pow" hidden><i></i></div>' : '')) +
+      (touch ? '<div class="touch"><div class="joy" id="joy"><div class="knob"></div></div><div class="abtn shoot act" id="ba">PASE<br>TIRO</div><div class="power" id="pow" hidden><i></i></div></div>' : (cfg.human >= 0 ? '<div class="keys-help">Flechas mover · ESPACIO: toque = pase, mantener = tiro / segada · clic en un compañero = pase, en un rival = segada · P pausa</div><div class="power" id="pow" hidden><i></i></div>' : '')) +
       '<div id="ovl"></div></div>';
     const root = app.querySelector('.match');
     const canvas = root.querySelector('canvas.field'); const radar = root.querySelector('canvas.radar');
@@ -203,6 +203,18 @@
         b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('down'); press(k, true); });
         const up = () => { b.classList.remove('down'); press(k, false); };
         b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+      });
+    }
+    // tocar o hacer clic sobre un jugador: pase a ese compañero o segada sobre ese rival
+    if (cfg.human >= 0) {
+      canvas.addEventListener('pointerdown', (e) => {
+        if (paused || ended) return;
+        const r = canvas.getBoundingClientRect();
+        const [wx, wy] = R.screenToWorld(e.clientX - r.left, e.clientY - r.top);
+        const tol = Math.max(2.2, 26 / R.S); // radio de toque en metros
+        let best = null, bd = tol;
+        m.all().forEach((p) => { const d = U.dist(p.x, p.y, wx, wy); if (d < bd) { bd = d; best = p; } });
+        if (best && m.tapPlayer(best)) e.preventDefault();
       });
     }
     const resize = () => { R.resize(); };

@@ -27,7 +27,9 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
 | Tiro (mantener: más tiempo = más potencia) | Mantener el botón | Mantener el botón |
 | Efecto en el tiro | Justo después de tirar, pulsa hacia un lado | Joystick hacia un lado |
 | Sin balón: entrada (toque) o cambio de jugador si estás lejos | Toque | Toque |
-| Sin balón: segada más larga | Mantener el botón | Mantener el botón |
+| Sin balón: segada más larga y fuerte (roba con facilidad; si es dura o por detrás puede ser falta, amarilla o roja) | Mantener el botón | Mantener el botón |
+| Pasar a un compañero concreto | Clic sobre él | Tocarlo |
+| Segada del defensa más cercano sobre un rival | Clic sobre el rival | Tocarlo |
 | Portero con el balón (blocaje o saque de puerta): apuntar | Flechas | Joystick |
 | Portero: pase (toque) o despeje largo (mantener) | Botón | Botón |
 | Pausa | P o Esc | Botón ❚❚ |

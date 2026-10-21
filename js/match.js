@@ -615,7 +615,17 @@
     if (hasBall && this._lastHumanOwner !== p) { if (mag <= 0.15) I.lastA = this.dir[p.side] === 1 ? 0 : Math.PI; }
     this._lastHumanOwner = hasBall ? p : null;
     if (p.state === 'slide') { p.humanMove = true; }
+    else if (p.autoSlide && mag <= 0.15 && !hasBall) {
+      // corre hacia el rival tocado y le hace la segada al llegar
+      const q = p.autoSlide; p.autoSlideT -= dt || 0;
+      if (q.off || p.autoSlideT <= 0 || this.ball.owner && this.ball.owner.side === p.side) p.autoSlide = null;
+      else {
+        p.tx = q.x + q.vx * 0.4; p.ty = q.y + q.vy * 0.4; p.want = 1; p.humanMove = true;
+        if (U.dist(p.x, p.y, q.x, q.y) < 4.5 && p.tackleCd <= 0) this.startSlide(p, this.leadAngle(p, q, 0.6), 0.6);
+      }
+    }
     else {
+      if (mag > 0.15) p.autoSlide = null;
       let runA = null;
       if (mag > 0.15) runA = I.lastA;
       else if (I.lastA !== null && (hasBall || I.idleT < 0.5)) runA = I.lastA;
@@ -658,9 +668,8 @@
       } else {
         // segada: más larga cuanto más tiempo se mantiene el botón
         const len = U.clamp((held - TAP) / 0.5, 0, 1);
-        const sp = this.speedOf(p) + 1 + len * 3;
-        p.state = 'slide'; p.stateT = 0.35 + len * 0.45; p.slideDone = false; p.tackleCd = 1.1;
-        p.vx = Math.cos(aimA) * sp; p.vy = Math.sin(aimA) * sp; p.face = aimA;
+        if (c && c.side !== p.side && dC < 9 && mag <= 0.15) aimA = this.leadAngle(p, c, len);
+        this.startSlide(p, aimA, len);
       }
     }
   };
@@ -699,6 +708,48 @@
     }
   };
 
+  // Ángulo hacia donde estará el rival cuando llegue la segada
+  MP.leadAngle = function (p, c, len) {
+    const sp = this.speedOf(p) + 3 + len * 3; const t = U.clamp(U.dist(p.x, p.y, c.x, c.y) / sp, 0, 0.6);
+    return Math.atan2(c.y + c.vy * t - p.y, c.x + c.vx * t - p.x);
+  };
+  // Segada: len 0..1 (más larga y más fuerte cuanto más se mantiene el botón)
+  MP.startSlide = function (p, a, len) {
+    const sp = this.speedOf(p) + 3 + len * 3; // incluso la segada corta alcanza unos 4-5 m
+    p.state = 'slide'; p.stateT = 0.45 + len * 0.4; p.slideDone = false; p.slideLen = len; p.tackleCd = 1.1;
+    p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.face = a; p.autoSlide = null;
+    if (this.hooks.sound) this.hooks.sound('kick', this);
+  };
+
+  // --------- toques en la pantalla
+  // Tocar a un compañero: si tu equipo tiene el balón, se lo pasas; si no, pasas a controlarlo.
+  MP.tapPlayer = function (q) {
+    if (this.human < 0 || !q || q.off || this.phase !== 'play') return false;
+    const s = this.human; const b = this.ball; const own = b.owner;
+    if (q.side === s) {
+      if (own && own.side === s && own !== q && own === this.ctrl) {
+        const d = U.dist(own.x, own.y, q.x, q.y); const lead = Math.min(1, d / 20);
+        const tx = U.clamp(q.x + q.vx * lead, 1, PL - 1), ty = U.clamp(q.y + q.vy * lead, 1, PW - 1);
+        const lane = this.laneOpen(s, own.x, own.y, tx, ty);
+        this.pass(own, q, tx, ty, d > 30 || (lane < 1.4 && d > 12));
+        this.input.lastA = null; this.gkAim = null; this.tapMark = { x: q.x, y: q.y, t: 0.6, c: '#9dff7a' };
+        return true;
+      }
+      if (!own || own.side !== s) { if (!q.isGK) { this.ctrl = q; this.switchLock = 1; this.tapMark = { x: q.x, y: q.y, t: 0.5, c: '#ffe14d' }; } return true; }
+      return false;
+    }
+    // Tocar a un rival: el defensor más cercano va a por él con una segada
+    const defs = this.active(s).filter((p) => !p.isGK && p.state !== 'down');
+    if (!defs.length) return false;
+    defs.sort((a, c) => U.dist(a.x, a.y, q.x, q.y) - U.dist(c.x, c.y, q.x, q.y));
+    const d = defs[0]; this.ctrl = d; this.switchLock = 1.2; this.input.lastA = null;
+    this.tapMark = { x: q.x, y: q.y, t: 0.7, c: '#ff5a4f' };
+    if (d.tackleCd > 0 && d.state === 'slide') return true;
+    if (U.dist(d.x, d.y, q.x, q.y) < 5) this.startSlide(d, this.leadAngle(d, q, 0.6), 0.6);
+    else { d.autoSlide = q; d.autoSlideT = 3; }
+    return true;
+  };
+
   // --------- entradas, faltas y tarjetas
   MP.tackles = function (dt) {
     const b = this.ball; const c = b.owner;
@@ -706,7 +757,7 @@
     if (!c) return;
     if (c.isGK && this.inBox(c.side, c.x, c.y)) return; // nadie puede entrar al portero con el balón en las manos
     const hc = this.ctrl;
-    if (hc && hc.side !== c.side && hc.state === 'slide' && !hc.slideDone && U.dist(hc.x, hc.y, c.x, c.y) < 1.8) { hc.slideDone = true; this.tryTackle(hc, c, true, true); if (b.owner !== c) return; }
+    if (hc && hc.side !== c.side && hc.state === 'slide' && !hc.slideDone && U.dist(hc.x, hc.y, c.x, c.y) < 2.1) { hc.slideDone = true; this.tryTackle(hc, c, true, true); if (b.owner !== c) return; }
     for (const p of this.P[1 - c.side]) {
       if (p.off || p.isGK || p === this.ctrl || p.tackleCd > 0) continue;
       const d = U.dist(p.x, p.y, c.x, c.y);
@@ -718,38 +769,51 @@
     const b = this.ball; p.tackleCd = 0.9 + this.R() * 0.5; p.st.tackles++;
     const diffB = c.side !== this.human && this.human >= 0 ? (this.diff - 1) * 40 : (p.side !== this.human && this.human >= 0 ? (this.diff - 1) * 40 : 0);
     const def = p.a.dfn + (p.side === this.human ? 0 : diffB), drb = c.a.reg + (c.side === this.human ? 0 : diffB);
-    let pWin = U.clamp(0.36 + (def - drb) / 140 + (human ? 0.08 : 0) + (slide ? 0.1 : 0), 0.12, 0.85);
     // entrada por detrás
     const behind = Math.cos(Math.atan2(p.y - c.y, p.x - c.x) - c.face) < -0.55;
-    let pFoul = 0.11 + p.a.agr / 650 + (behind ? 0.1 : 0) + (human ? 0.04 : 0) + (slide ? 0.07 : 0);
-    if (!slide) { p.state = 'slide'; p.stateT = 0.35; }
+    let pWin, pFoul, sev = 0;
+    if (slide) {
+      // segada: muy eficaz para robar; si es fuerte (botón mantenido) o por detrás, más riesgo de falta y tarjeta
+      const len = p.slideLen || 0.5;
+      sev = U.clamp(len * 0.7 + (behind ? 0.45 : 0), 0, 1);
+      pWin = U.clamp(0.72 + (def - drb) / 220 + (human ? 0.06 : 0), 0.5, 0.93);
+      pFoul = 0.04 + len * 0.1 + (behind ? 0.16 : 0) + p.a.agr / 1500;
+    } else {
+      pWin = U.clamp(0.36 + (def - drb) / 140 + (human ? 0.08 : 0), 0.12, 0.85);
+      pFoul = 0.11 + p.a.agr / 650 + (behind ? 0.1 : 0) + (human ? 0.04 : 0);
+      p.state = 'slide'; p.stateT = 0.35;
+    }
     const r = this.R();
-    if (r < pFoul) { this.foul(p, c, behind); return; }
+    if (r < pFoul) { this.foul(p, c, behind, sev); return; }
     if (r < pFoul + pWin) {
       // balón recuperado o suelto
-      if (this.R() < 0.55) { b.owner = p; b.last = p; p.st.touch++; this.say('steal', { pid: p.d.id, side: p.side }); }
-      else { const a = this.R() * Math.PI * 2; this.kick(p, Math.cos(a) * 6, Math.sin(a) * 6, 0, 'loose', null); }
-      c.state = 'stumble'; c.stateT = 0.4;
+      if (this.R() < (slide ? 0.68 : 0.55)) { b.owner = p; b.last = p; p.st.touch++; this.say('steal', { pid: p.d.id, side: p.side }); if (slide) { p.vx *= 0.4; p.vy *= 0.4; p.state = ''; p.stateT = 0; } }
+      else if (slide) { // el balón sale despedido hacia un lado, lejos del rival caído
+        const side = this.R() < 0.5 ? 1 : -1; const a = p.face + side * (0.9 + this.R() * 0.5);
+        this.kick(p, Math.cos(a) * 6 + p.vx * 0.5, Math.sin(a) * 6 + p.vy * 0.5, 0, 'loose', null); b.kickCd = 0.05;
+      } else { const a = this.R() * Math.PI * 2; this.kick(p, Math.cos(a) * 6, Math.sin(a) * 6, 0, 'loose', null); }
+      c.state = 'stumble'; c.stateT = slide ? 0.9 : 0.4;
     }
   };
 
-  MP.foul = function (p, victim, hard) {
+  MP.foul = function (p, victim, hard, sev) {
+    sev = sev || 0; // gravedad de una segada (0 suave … 1 muy dura)
     const s = victim.side; this.stats.fouls[p.side]++;
     victim.state = 'down'; victim.stateT = 1.2;
     const inBox = this.inBox(p.side, victim.x, victim.y);
     let card = null;
     const rc = this.R();
-    const pYel = 0.2 + p.a.agr / 400 + (hard ? 0.12 : 0);
-    if (rc < 0.012 + (hard ? 0.02 : 0)) card = 'red';
+    const pYel = 0.2 + p.a.agr / 400 + (hard ? 0.12 : 0) + sev * 0.35;
+    if (rc < 0.012 + (hard ? 0.02 : 0) + sev * sev * 0.12) card = 'red';
     else if (rc < pYel) card = p.yel ? 'red2' : 'yellow';
-    this.say('foul', { pid: p.d.id, side: p.side, victim: victim.d.id });
+    this.say('foul', { pid: p.d.id, side: p.side, victim: victim.d.id, sev });
     if (card === 'yellow') { p.yel = 1; this.events.push({ type: 'yellow', side: p.side, min: this.minute(), pid: p.d.id }); this.say('yellow', { pid: p.d.id, side: p.side }); }
     if (card === 'red' || card === 'red2') {
       if (card === 'red2') this.events.push({ type: 'yellow', side: p.side, min: this.minute(), pid: p.d.id });
       this.events.push({ type: 'red', side: p.side, min: this.minute(), pid: p.d.id, second: card === 'red2' });
       this.say('red', { pid: p.d.id, side: p.side }); this.sendOff(p);
     }
-    if (this.R() < 0.022) {
+    if (this.R() < 0.022 + sev * 0.03) {
       const weeks = this.R.weighted([1, 1, 2, 2, 3, 4, 6, 10], () => 1);
       this.events.push({ type: 'injury', side: s, min: this.minute(), pid: victim.d.id, weeks });
       this.say('injury', { pid: victim.d.id, side: s });

@@ -174,6 +174,15 @@
     return [this.ox + (y - cy) * this.S, this.oy - (x - cx) * this.S];
   };
   // vector de pantalla → vector del mundo (para el mando)
+  // pantalla → mundo (para tocar jugadores)
+  RP.screenToWorld = function (sx, sy) {
+    let cx = this.camX, cy = this.camY; if (this.flip) { cx = PL - cx; cy = PW - cy; }
+    let x, y;
+    if (!this.rot) { x = cx + (sx - this.ox) / this.S; y = cy + (sy - this.oy) / this.S; }
+    else { y = cy + (sx - this.ox) / this.S; x = cx - (sy - this.oy) / this.S; }
+    if (this.flip) { x = PL - x; y = PW - y; }
+    return [x, y];
+  };
   RP.screenVecToWorld = function (sx, sy) {
     let wx, wy;
     if (!this.rot) { wx = sx; wy = sy; } else { wx = -sy; wy = sx; }
@@ -306,6 +315,8 @@
     }
     // árbitro
     const ref = m.ref; this.drawPlayer(g, { x: ref.x, y: ref.y, face: ref.face, anim: ref.anim, run: Math.hypot(ref.vx, ref.vy), d: { tone: 2, hair: 0 }, state: '' }, { p: '#111111', s: '#222222', pat: 'plain', sh: '#111111', so: '#111111' }, true);
+    // marca del jugador tocado
+    if (m.tapMark && m.tapMark.t > 0) { const t = m.tapMark; t.t -= dt; g.strokeStyle = t.c; g.lineWidth = 0.1 * this.k; g.beginPath(); g.arc(t.x, t.y, (1.4 - t.t) * this.k, 0, 7); g.stroke(); }
     // flecha de puntería del portero controlado
     if (m.gkAim !== null && m.gkAim !== undefined && m.ctrl && m.ctrl.isGK && m.ball.owner === m.ctrl) {
       const p = m.ctrl, a = m.gkAim, L = 10;
