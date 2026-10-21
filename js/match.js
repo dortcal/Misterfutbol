@@ -105,6 +105,8 @@
     if (att[1]) { att[1].x = PL / 2 - this.dir[side] * 1; att[1].y = PW / 2 + 6; }
     k.tx = k.x; k.ty = k.y; k.want = 0; k.vx = k.vy = 0; // el sacador espera junto al balón
     this.restart = { type: 'kickoff', side, taker: k };
+    // cada equipo en su campo y el rival fuera del círculo central
+    this.all().forEach((p) => { if (p === k) return; const [x, y] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x; p.y = y; p.tx = x; p.ty = y; });
     b.owner = k; this.phase = 'kickoff'; this.phaseT = 1.0;
   };
 
@@ -129,6 +131,8 @@
     taker.x = x - Math.cos(ang) * 0.7; taker.y = y - Math.sin(ang) * 0.7; taker.vx = taker.vy = 0;
     if (type === 'throw') { taker.x = x; taker.y = y < 1 ? -0.4 : PW + 0.4; }
     taker.tx = taker.x; taker.ty = taker.y; taker.want = 0;
+    // en los córners, rematadores y defensores aparecen ya colocados en el área
+    if (type === 'corner') this.all().forEach((p) => { if (p === taker || p.isGK) return; const [x, y] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x; p.y = y; p.tx = x; p.ty = y; p.vx = p.vy = 0; });
     if (type === 'penalty') {
       // resto de jugadores fuera del área
       this.all().forEach((p) => {
@@ -162,14 +166,26 @@
     }
     // reloj
     // saque de centro de la persona: el balón no se pone en juego hasta que pulse PASE o TIRO
-    this.waitingHuman = this.phase === 'kickoff' && this.restart && this.restart.side === this.human && this.human >= 0;
+    // saques de la persona (centro, córner, falta, penalti, banda): el balón espera a que actúe.
+    // El saque de puerta lo hace el portero controlado (ver humanKeeper).
+    const rsH = this.restart;
+    this.waitingHuman = (this.phase === 'kickoff' || this.phase === 'restart') && rsH && rsH.side === this.human && this.human >= 0 && rsH.type !== 'goalkick';
     if (this.waitingHuman) {
       this.thinkPositions(dt, true); this.moveAll(dt, true);
-      this.ball.x = PL / 2; this.ball.y = PW / 2; this.ball.z = 0;
-      if (this.phaseT > 0) { this.phaseT -= dt; this.input.btnRel = this.input.passRel = this.input.shootRel = false; return; }
-      if (this.input.btnRel || this.input.passRel || this.input.shootRel) { this.input.btnRel = this.input.passRel = this.input.shootRel = false; this.waitingHuman = false; this.input.lastA = null; this.executeRestart(); }
+      const bx = rsH.type === 'kickoff' ? PL / 2 : rsH.x, by = rsH.type === 'kickoff' ? PW / 2 : rsH.y;
+      this.ball.x = bx; this.ball.y = by; this.ball.z = 0; this.ball.owner = rsH.taker;
+      this.ctrl = rsH.taker;
+      const I = this.input; const mag = Math.hypot(I.mx, I.my);
+      if (mag > 0.15) this.restartAim = Math.atan2(I.my, I.mx);
+      if (this.phaseT > 0) { this.phaseT -= dt; I.btnRel = I.passRel = I.shootRel = false; return; }
+      this.waitT = (this.waitT || 0) + dt;
+      if (I.btnRel || I.passRel || I.shootRel) {
+        const held = I.btnRel ? I.btnHeldT || 0 : 0; I.btnRel = I.passRel = I.shootRel = false; I.lastA = null;
+        this.humanRestartButton(held);
+      } else if (this.waitT > 12) { this.waitT = 0; this.waitingHuman = false; this.executeRestart(); } // si no actúa, saca la máquina
       return;
     }
+    this.waitT = 0;
     this.t += dt * this.minPerSec * (this.phase === 'play' ? 1 : 0.35);
     if (this.half === 1 && this.t >= 45 + this.added[0] && this.phase === 'play' && this.safeToStop()) { this.endHalf(); return; }
     if (this.half === 2 && this.t >= 90 + this.added[1] && this.phase === 'play' && this.safeToStop()) { this.endMatch(); return; }
@@ -371,6 +387,12 @@
 
   MP.setPiecePos = function (p, rs, tx, ty) {
     if (p === rs.taker) return [p.x, p.y];
+    if (rs.type === 'kickoff') {
+      const s = p.side; let ax = Math.min(this.ax(s, tx), 0.47);
+      let x = this.wx(s, ax), y = ty;
+      if (s !== rs.side) { const d = U.dist(x, y, PL / 2, PW / 2); if (d < 9.8) { const a = Math.atan2(y - PW / 2, x - PL / 2) || Math.PI; x = PL / 2 + Math.cos(a) * 9.8; y = PW / 2 + Math.sin(a) * 9.8; if (this.ax(s, x) > 0.47) x = this.wx(s, 0.4); } }
+      return [x, y];
+    }
     const att = p.side === rs.side;
     if (rs.type === 'corner') {
       const gx = this.oppGoalX(rs.side);
@@ -530,7 +552,7 @@
   MP.kick = function (p, vx, vy, vz, type, target) {
     const b = this.ball;
     b.owner = null; b.vx = vx; b.vy = vy; b.vz = vz; b.z = Math.max(b.z, 0.05);
-    b.last = p; b.kickBy = p; b.kickCd = 0.22; b.type = type; b.target = target || null; b.shotSaveTried = false; b.otCounted = false; b.magnet = 0; b.curveT = 0;
+    b.last = p; b.kickBy = p; b.kickCd = 0.22; b.type = type; b.target = target || null; b.shotSaveTried = false; b.otCounted = false; b.magnet = 0; b.curveT = 0; b.softLand = false;
     b.offside = target && this.isOffside(target) ? target : null;
     b.shotFrom = type === 'shot' ? [p.x, p.y] : null;
     p.kickCd = 0.3; p.state = 'kick'; p.stateT = 0.18;
@@ -576,7 +598,7 @@
     this.ball.type = 'clear';
   };
 
-  MP.shoot = function (p, aimY, power) {
+  MP.shoot = function (p, aimY, power, precise) {
     const s = p.side; const gx = this.oppGoalX(s);
     const d = U.dist(p.x, p.y, gx, PW / 2);
     const tir = p.a.tir * (s === this.human || this.human < 0 ? 1 : this.diff);
@@ -585,7 +607,7 @@
     if (aimY !== undefined && aimY !== null) ty = PW / 2 + aimY * (GOAL_W / 2 - 0.3);
     else { const far = gk && gk.y < PW / 2 ? 1 : -1; ty = PW / 2 + far * (1.6 + this.R() * 1.8); }
     const press = this.pressureOn(p);
-    const sigma = (0.9 + d * 0.085) * (1.45 - tir / 100) * (press < 1.3 ? 1.35 : 1) * (power > 0.9 ? 1.25 : 1);
+    const sigma = (0.9 + d * 0.085) * (1.45 - tir / 100) * (press < 1.3 ? 1.35 : 1) * (power > 0.9 ? 1.25 : 1) * (precise ? 0.45 : 1);
     ty += this.R.normal() * sigma;
     const speed = (19 + tir / 100 * 9) * (power ? 0.75 + power * 0.4 : 1) + this.R() * 2;
     const a = Math.atan2(ty - p.y, gx - p.x);
@@ -721,11 +743,85 @@
     if (this.hooks.sound) this.hooks.sound('kick', this);
   };
 
+  // Empieza el juego desde un saque de la persona y devuelve al ejecutor
+  MP.beginHumanRestart = function () {
+    const rs = this.restart; if (!rs) return null;
+    const p = rs.taker; const b = this.ball;
+    b.owner = p; b.x = rs.type === 'kickoff' ? PL / 2 : rs.x; b.y = rs.type === 'kickoff' ? PW / 2 : rs.y;
+    this.phase = 'play'; this.restart = null; this.waitingHuman = false; this.waitT = 0;
+    this.lastRestartPenalty = rs.type === 'penalty'; this.ctrl = p; this.restartAim = null;
+    if (this.hooks.sound && rs.type !== 'throw') this.hooks.sound('whistle', this);
+    return { p, type: rs.type };
+  };
+  // Saque con el botón: toque = pase hacia donde apuntas · mantener = tiro (penalti, falta cercana) o balón largo
+  MP.humanRestartButton = function (held) {
+    const aimA = this.restartAim !== null && this.restartAim !== undefined ? this.restartAim : null;
+    const r = this.beginHumanRestart(); if (!r) return;
+    const p = r.p; const s = p.side; const I = this.input;
+    const gx = this.oppGoalX(s); const dG = U.dist(p.x, p.y, gx, PW / 2);
+    if (held >= 0.22 && (r.type === 'penalty' || dG < 32)) {
+      const lat = this.dir[s] === 1 ? I.my : -I.my;
+      const aim = Math.hypot(I.mx, I.my) > 0.15 ? U.clamp(lat / Math.max(0.2, Math.hypot(I.mx, I.my)), -1, 1) : (this.R() < 0.5 ? -0.6 : 0.6);
+      this.shoot(p, aim, U.clamp((held - 0.22) / 0.55, 0.3, 1)); this.ball.curveT = 0.9; return;
+    }
+    if (r.type === 'corner') {
+      const tgt = this.active(s).filter((q) => q !== p && this.inBox(1 - s, q.x, q.y)).sort((a, c) => (c.a.agr + c.d.ovr) - (a.a.agr + a.d.ovr))[0];
+      if (tgt) { this.cross(p, tgt); return; }
+    }
+    const a = aimA !== null ? aimA : (this.dir[s] === 1 ? 0 : Math.PI);
+    if (held >= 0.22) { const v = 22; this.kick(p, Math.cos(a) * v, Math.sin(a) * v, 7, 'clear', null); return; }
+    const bp = this.bestPass(p, a);
+    if (bp) this.pass(p, bp.r, bp.tx, bp.ty, r.type === 'throw' ? false : bp.loft);
+    else this.kick(p, Math.cos(a) * 14, Math.sin(a) * 14, 0, 'pass', null);
+  };
+
+  // Mantener pulsado sobre un punto del campo: el balón va justo allí.
+  // Si el punto está en la portería rival, es un tiro colocado y muy preciso.
+  MP.kickToPoint = function (x, y, held) {
+    if (this.human < 0) return false;
+    let p = null;
+    if (this.waitingHuman && this.restart && this.restart.type !== 'goalkick' && this.phaseT <= 0) { const r = this.beginHumanRestart(); p = r && r.p; }
+    else if (this.phase === 'play' && this.ball.owner && this.ball.owner === this.ctrl && this.ball.owner.side === this.human) p = this.ball.owner;
+    if (!p) return false;
+    const s = p.side; const gx = this.oppGoalX(s);
+    this.gkAim = null; this.input.lastA = null;
+    const nearGoal = Math.abs(x - gx) < 7 && Math.abs(y - PW / 2) < GOAL_W / 2 + 3;
+    if (nearGoal && Math.abs(gx - p.x) < 45) {
+      const lat = (y - PW / 2) / (GOAL_W / 2 - 0.3) * (this.dir[s] === 1 ? 1 : 1);
+      const aim = U.clamp(this.dir[s] === 1 ? lat : lat, -1, 1);
+      this.shoot(p, aim, U.clamp(0.55 + held * 0.6, 0.55, 0.95), true);
+      this.tapMark = { x: gx, y: PW / 2 + aim * (GOAL_W / 2 - 0.3), t: 0.7, c: '#ffd60a' };
+      return true;
+    }
+    x = U.clamp(x, 0.5, PL - 0.5); y = U.clamp(y, 0.5, PW - 0.5);
+    const d = U.dist(p.x, p.y, x, y); const a = Math.atan2(y - p.y, x - p.x) + this.R.normal() * 0.02;
+    p.st.pass++; p.face = a;
+    // receptor: el compañero más cercano al punto (si está cerca), para que el imán le ayude
+    const mate = this.active(s).filter((q) => q !== p && !q.isGK).sort((q1, q2) => U.dist(q1.x, q1.y, x, y) - U.dist(q2.x, q2.y, x, y))[0];
+    const r = mate && U.dist(mate.x, mate.y, x, y) < 6 ? mate : null;
+    if (d <= 28) { const v = d * 0.92 + 1.5; this.kick(p, Math.cos(a) * v, Math.sin(a) * v, 0, 'pass', r); }
+    else { const T = 0.8 + d / 26, v = d / T; this.kick(p, Math.cos(a) * v, Math.sin(a) * v, GRAV * T / 2, 'pass', r); this.ball.softLand = true; }
+    if (r) this.ball.magnet = U.clamp((p.a.pas + r.a.cal) / 200, 0.3, 1.25);
+    this.tapMark = { x, y, t: 0.7, c: '#9dff7a' };
+    return true;
+  };
+
   // --------- toques en la pantalla
   // Tocar a un compañero: si tu equipo tiene el balón, se lo pasas; si no, pasas a controlarlo.
   MP.tapPlayer = function (q) {
-    if (this.human < 0 || !q || q.off || this.phase !== 'play') return false;
-    const s = this.human; const b = this.ball; const own = b.owner;
+    if (this.human < 0 || !q || q.off) return false;
+    const s = this.human; const b = this.ball;
+    if (this.waitingHuman && this.restart && this.restart.type !== 'goalkick') {
+      if (q.side !== s || q === this.restart.taker || this.phaseT > 0) return false;
+      const r = this.beginHumanRestart(); const p = r.p;
+      const d = U.dist(p.x, p.y, q.x, q.y); const lane = this.laneOpen(s, p.x, p.y, q.x, q.y);
+      if (r.type === 'corner' || (r.type === 'free' && d > 18)) { this.pass(p, q, q.x, q.y, true); this.ball.type = 'cross'; }
+      else this.pass(p, q, q.x, q.y, r.type !== 'throw' && (d > 30 || (lane < 1.4 && d > 12)));
+      this.tapMark = { x: q.x, y: q.y, t: 0.6, c: '#9dff7a' };
+      return true;
+    }
+    if (this.phase !== 'play') return false;
+    const own = b.owner;
     if (q.side === s) {
       if (own && own.side === s && own !== q && own === this.ctrl) {
         const d = U.dist(own.x, own.y, q.x, q.y); const lead = Math.min(1, d / 20);
@@ -932,7 +1028,7 @@
       b.vx *= (1 - 0.06 * dt); b.vy *= (1 - 0.06 * dt);
       if (b.z <= 0) {
         b.z = 0;
-        if (b.vz < -2.5) { b.vz = -b.vz * 0.45; b.vx *= 0.75; b.vy *= 0.75; } else b.vz = 0;
+        if (b.vz < -2.5) { b.vz = -b.vz * 0.45; const f = b.softLand ? 0.35 : 0.75; b.vx *= f; b.vy *= f; b.softLand = false; } else b.vz = 0;
       }
     } else {
       const k = Math.exp(-0.9 * dt); b.vx *= k; b.vy *= k;
@@ -1158,10 +1254,7 @@
       if (r) this.pass(p, r, r.x, r.y, false);
       return;
     }
-    if (s === this.human && rs.type !== 'penalty' && p === this.ctrl) {
-      // la persona decide: le damos el balón parado
-      p.think = 0.4; return;
-    }
+    // (los saques de la persona se resuelven en step/humanRestartButton; aquí solo llega la máquina)
     if (rs.type === 'penalty') { this.lastRestartPenalty = true; this.shoot(p, this.R() < 0.5 ? -0.7 : 0.7, 0.85); this.ball.shotFrom = [p.x, p.y]; return; }
     if (rs.type === 'corner') {
       const tgt = this.active(s).filter((q) => q !== p && this.inBox(1 - s, q.x, q.y)).sort((a, c) => (c.a.agr + c.d.ovr * 0.5) - (a.a.agr + a.d.ovr * 0.5));

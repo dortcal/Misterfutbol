@@ -315,6 +315,14 @@
     }
     // árbitro
     const ref = m.ref; this.drawPlayer(g, { x: ref.x, y: ref.y, face: ref.face, anim: ref.anim, run: Math.hypot(ref.vx, ref.vy), d: { tone: 2, hair: 0 }, state: '' }, { p: '#111111', s: '#222222', pat: 'plain', sh: '#111111', so: '#111111' }, true);
+    // puntería al mantener pulsado sobre un punto
+    if (m.aimPoint && m.human >= 0) {
+      const [ax, ay] = m.aimPoint; const b0 = m.ball;
+      const gx = m.oppGoalX(m.human); const onGoal = Math.abs(ax - gx) < 7 && Math.abs(ay - PW / 2) < 6.7;
+      g.strokeStyle = onGoal ? 'rgba(255,214,10,0.95)' : 'rgba(255,255,255,0.85)'; g.lineWidth = 0.09 * this.k; g.setLineDash([0.9, 0.6]);
+      g.beginPath(); g.moveTo(b0.x, b0.y); g.lineTo(ax, ay); g.stroke(); g.setLineDash([]);
+      g.beginPath(); g.arc(ax, ay, 0.45 * this.k, 0, 7); g.stroke();
+    }
     // marca del jugador tocado
     if (m.tapMark && m.tapMark.t > 0) { const t = m.tapMark; t.t -= dt; g.strokeStyle = t.c; g.lineWidth = 0.1 * this.k; g.beginPath(); g.arc(t.x, t.y, (1.4 - t.t) * this.k, 0, 7); g.stroke(); }
     // flecha de puntería del portero controlado

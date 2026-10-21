@@ -30,9 +30,12 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
 | Sin balón: segada más larga y fuerte (roba con facilidad; si es dura o por detrás puede ser falta, amarilla o roja) | Mantener el botón | Mantener el botón |
 | Pasar a un compañero concreto | Clic sobre él | Tocarlo |
 | Segada del defensa más cercano sobre un rival | Clic sobre el rival | Tocarlo |
+| Lanzar el balón a un punto (sobre la portería: tiro preciso) | Mantener clic en ese punto | Mantener el dedo en ese punto |
 | Portero con el balón (blocaje o saque de puerta): apuntar | Flechas | Joystick |
 | Portero: pase (toque) o despeje largo (mantener) | Botón | Botón |
 | Pausa | P o Esc | Botón ❚❚ |
+
+En tus saques (centro, córner, falta, penalti y banda) el balón espera a que actúes: toca a un compañero para pasarle, mantén pulsado en un punto para lanzar allí o usa el botón (si no haces nada en 12 segundos, saca la máquina). Antes del saque de centro cada equipo se queda en su campo y el rival fuera del círculo central.
 
 Cuando un disparo sale por la línea de fondo, el árbitro pita y aparece "FUERA DE META". Si tu portero bloca el balón o tienes saque de puerta, decides tú dónde sacar: aparece una flecha de puntería (si no sacas en 8 segundos, saca solo).
 

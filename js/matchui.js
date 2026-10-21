@@ -205,17 +205,34 @@
         b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
       });
     }
-    // tocar o hacer clic sobre un jugador: pase a ese compañero o segada sobre ese rival
+    // Pantalla táctil / ratón sobre el campo:
+    //  · toque sobre un compañero = pase (también en saques) · toque sobre un rival = segada del defensa más cercano
+    //  · mantener pulsado en cualquier otro punto = el balón va allí (en la portería, tiro muy preciso)
     if (cfg.human >= 0) {
+      let tp = null;
+      const toWorld = (e) => { const r = canvas.getBoundingClientRect(); return R.screenToWorld(e.clientX - r.left, e.clientY - r.top); };
+      const playerAt = (wx, wy) => { const tol = Math.max(2.2, 26 / R.S); let best = null, bd = tol; m.all().forEach((p) => { const d = U.dist(p.x, p.y, wx, wy); if (d < bd) { bd = d; best = p; } }); return best; };
       canvas.addEventListener('pointerdown', (e) => {
         if (paused || ended) return;
-        const r = canvas.getBoundingClientRect();
-        const [wx, wy] = R.screenToWorld(e.clientX - r.left, e.clientY - r.top);
-        const tol = Math.max(2.2, 26 / R.S); // radio de toque en metros
-        let best = null, bd = tol;
-        m.all().forEach((p) => { const d = U.dist(p.x, p.y, wx, wy); if (d < bd) { bd = d; best = p; } });
-        if (best && m.tapPlayer(best)) e.preventDefault();
+        const [wx, wy] = toWorld(e); tp = { id: e.pointerId, t: performance.now(), p: playerAt(wx, wy) };
+        try { canvas.setPointerCapture(e.pointerId); } catch (er) { /* sin captura */ }
+        const t0 = tp; setTimeout(() => { if (tp === t0 && !tp.p) m.aimPoint = [wx, wy]; }, 200); // puntería aunque no se mueva el dedo
+        e.preventDefault();
       });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!tp || tp.id !== e.pointerId) return;
+        const [wx, wy] = toWorld(e); if (!tp.p || U.dist(tp.p.x, tp.p.y, wx, wy) > 4) tp.p = null;
+        if (performance.now() - tp.t > 200) m.aimPoint = [wx, wy];
+      });
+      const tpEnd = (e) => {
+        if (!tp || tp.id !== e.pointerId) return;
+        const held = (performance.now() - tp.t) / 1000; const [wx, wy] = toWorld(e);
+        m.aimPoint = null;
+        if (tp.p && held < 0.45) m.tapPlayer(tp.p);
+        else if (held >= 0.2 && !paused && !ended) m.kickToPoint(wx, wy, held);
+        tp = null;
+      };
+      canvas.addEventListener('pointerup', tpEnd); canvas.addEventListener('pointercancel', (e) => { tp = null; m.aimPoint = null; });
     }
     const resize = () => { R.resize(); };
     G.addEventListener('resize', resize);
@@ -333,7 +350,11 @@
         if (radar) R.drawRadar(radar);
       }
       if (m.ctrl && m.ctrl.isGK && m.ball.owner === m.ctrl && m.gkAim !== null && m.gkAim !== undefined && tickT <= 0.31) { tick.textContent = 'Portero: apunta y pulsa ' + (touch ? 'el botón' : 'ESPACIO') + ' (mantén para despejar largo)'; tick.hidden = false; tickT = 0.3; }
-      if (m.waitingHuman && m.phaseT <= 0) { tick.textContent = touch ? 'Pulsa el botón para sacar de centro' : 'Pulsa ESPACIO para sacar de centro'; tick.hidden = false; tickT = 0.3; }
+      if (m.waitingHuman && m.phaseT <= 0 && m.restart) {
+        const nm = { kickoff: 'Saque de centro', corner: 'Córner', free: 'Falta', penalty: 'Penalti', throw: 'Saque de banda' }[m.restart.type] || 'Saque';
+        tick.textContent = nm + ': toca a un compañero, mantén pulsado en un punto para lanzar allí' + (touch ? ' o usa el botón' : ' o pulsa ESPACIO (mantén = tiro)');
+        tick.hidden = false; tickT = 0.3;
+      }
       if (tickT > 0) { tickT -= dt; if (tickT <= 0) tick.hidden = true; }
       if (banT > 0) { banT -= dt; if (banT <= 0) ban.innerHTML = ''; }
     }
