@@ -247,36 +247,49 @@
     ['cantera', 'Entrenador de cantera', 'Mejores canteranos y más progresión de los menores de 23 años.'],
   ];
   LG.STAFF_WAGE = [0, 0.005, 0.01, 0.018, 0.028, 0.04];   // M€ por semana (jornada) según estrellas
+  // Nombres de broma (los que llevan guiño a entrenadores célebres son parodias, no las personas reales)
   const STAFF_NAMES = {
-    segundo: ['Paco Pizarra', 'Aitor Tilla', 'Armando Jugadas', 'Rafa Rondo', 'Elvis Tácticas', 'Lucho Contragolpe', 'Tomás Notas', 'Pepe Libreta', 'Marcos Marcaje', 'Ana Lítica', 'Rosendo Rombo', 'Bernabé Banquillo'],
-    fisio: ['Esteban Dajes', 'Remedios Rápidos', 'Curro Curas', 'Rosa Masaje', 'Luis Ligamento', 'Menisco Martínez', 'Tirita Gómez', 'Alivio Sánchez', 'Hielo Ramírez', 'Camila Camilla'],
-    fisico: ['Armando Músculo', 'Germán Cuestas', 'Paca Carrera', 'Benito Burpees', 'Dina Mita', 'Marcial Abdominal', 'Lucas Sprint', 'Fausto Fondo', 'Elena Estiramiento', 'Cristóbal Cardio'],
-    psico: ['Serena Mente', 'Feliciano Calma', 'Consuelo Siempre', 'Paz Interior', 'Positivo López', 'Alegría Ruiz', 'Zen García', 'Esperanza Gana', 'Clemente Tranquilo', 'Sonrisa Torres'],
-    dirdep: ['Ramón Regateo', 'Rebaja Fernández', 'Chollo Martín', 'Oferta Gómez', 'Tasio Tasación', 'Duro Negociador', 'Fichaje Ruiz', 'Precio Justo', 'Cifra Baja', 'Gangas Pérez'],
-    marketing: ['Taquilla Llena', 'Lleno Total', 'Sponsor Pérez', 'Marca Ponce', 'Logo Martínez', 'Eslogan García', 'Viral Romero', 'Abono Díaz', 'Bufanda Gil', 'Camiseta Ortiz'],
-    cantera: ['Juanito Promesas', 'Talento Ruiz', 'Semillero Gil', 'Benjamín Alevín', 'Cadete Pérez', 'Prometeo Joven', 'Perla Escondida', 'Diamante Bruto', 'Futuro Martín', 'Vivero López'],
+    segundo: ['Paco Pizarra', 'Aitor Tilla', 'Armando Jugadas', 'Rafa Rondo', 'Elvis Tácticas', 'Lucho Contragolpe', 'Tomás Notas', 'Pepe Libreta', 'Marcos Marcaje', 'Ana Lítica', 'Rosendo Rombo', 'Bernabé Banquillo',
+      'José Mouriñito', 'Pep Guardiolilla', 'Louis van Gol', 'Carletto Cejotti', 'Cholo Sinmeone', 'Jürgen Kloppeteo', 'Johan Cruyffeta', 'Arrigo Sacchetti', 'Fabio Capellini', 'Vicente del Bosquete', 'Luis Aragonazo', 'Mikel Arteteta', 'Xabi Alonsete', 'Unai Emerito', 'Rafa Benitocracia', 'Marcelo Bielsista', 'Alex Fergusonrisa', 'Arsène Wengerito', 'Zinedine Zidanito', 'Javier Clementazo', 'Luis Enriquecido', 'Thomas Tuchelito', 'Julian Nagelsmanito', 'Hansi Flickflack', 'Ernesto Valverdetti', 'Marcelino Toralito', 'Míchel Pizarrín', 'Imanol Alguacilazo'],
+    fisio: ['Esteban Dajes', 'Remedios Rápidos', 'Curro Curas', 'Rosa Masaje', 'Luis Ligamento', 'Menisco Martínez', 'Tirita Gómez', 'Alivio Sánchez', 'Hielo Ramírez', 'Camila Camilla',
+      'Doctor Mourinhielo', 'Pep Vendaiola', 'Louis van Gasa', 'Carlo Ancelotión', 'Cholo Sinmenisco', 'Jürgen Klopprótesis', 'Ernesto Valverdugón', 'Fidel Fisioterapio', 'Paca Pomada', 'Lola Lumbago', 'Tito Tobillera', 'Gema Gelfrío', 'Benito Bálsamo', 'Rosario Rodillera', 'Teodoro Tendón', 'Sole Esguince', 'Fermín Férula'],
+    fisico: ['Armando Músculo', 'Germán Cuestas', 'Paca Carrera', 'Benito Burpees', 'Dina Mita', 'Marcial Abdominal', 'Lucas Sprint', 'Fausto Fondo', 'Elena Estiramiento', 'Cristóbal Cardio',
+      'Pep Sentadiola', 'José Mouriflexión', 'Louis van Gym', 'Cholo Sinsudor', 'Jürgen Klopponing', 'Carlo Abdominelotti', 'Luis Aragonfondo', 'Zinedine Zumbanito', 'Rocky Rodríguez', 'Paco Pesas', 'Juana Jogging', 'Toño Tonificado', 'Vicente Vatios', 'Merche Mancuerna', 'Sergio Series', 'Puri Pulsómetro', 'Roque Rodillo'],
+    psico: ['Serena Mente', 'Feliciano Calma', 'Consuelo Siempre', 'Paz Interior', 'Positivo López', 'Alegría Ruiz', 'Zen García', 'Esperanza Gana', 'Clemente Tranquilo', 'Sonrisa Torres',
+      'José Mourizen', 'Pep Guardiolapaz', 'Louis van Calma', 'Carlo Ancelchilli', 'Cholo Sinestrés', 'Jürgen Kloppabrazos', 'Vicente del Sosiego', 'Unai Emoción', 'Arsène Wenmantra', 'Marcelo Bielsofá', 'Dalia Diván', 'Moti Vación', 'Tomasa Terapia', 'Ramón Relax', 'Nieves Nirvana', 'Abel Autoestima', 'Coral Coraje'],
+    dirdep: ['Ramón Regateo', 'Rebaja Fernández', 'Chollo Martín', 'Oferta Gómez', 'Tasio Tasación', 'Duro Negociador', 'Fichaje Ruiz', 'Precio Justo', 'Cifra Baja', 'Gangas Pérez',
+      'Monchi Rebajas', 'José Mourichollo', 'Pep Guardiolarebaja', 'Louis van Gangas', 'Florentino Fichajez', 'Jorge Mendescuento', 'Pini Zahaviceo', 'Txiki Beginregateo', 'Cholo Sinpagar', 'Carlo Ancheques', 'Paco Pagaré', 'Cirilo Cláusula', 'Mercedes Mercado', 'Benito Bonus', 'Facunda Factura', 'Lucio Lucro', 'Teresa Traspaso'],
+    marketing: ['Taquilla Llena', 'Lleno Total', 'Sponsor Pérez', 'Marca Ponce', 'Logo Martínez', 'Eslogan García', 'Viral Romero', 'Abono Díaz', 'Bufanda Gil', 'Camiseta Ortiz',
+      'José Mouriñeta', 'Pep Guardiolanzamiento', 'Louis van Gala', 'Carlo Anuncelotti', 'Cholo Simeonline', 'Jürgen Klopphashtag', 'Pancarta Ruiz', 'Hashtag Hernández', 'Trending Torres', 'Merchan Morales', 'Paquita Palco', 'Telmo Televisión', 'Valla Publicitaria', 'Rosa Redes', 'Influencer Iglesias', 'Bruno Bombo', 'Estela Estadio'],
+    cantera: ['Juanito Promesas', 'Talento Ruiz', 'Semillero Gil', 'Benjamín Alevín', 'Cadete Pérez', 'Prometeo Joven', 'Perla Escondida', 'Diamante Bruto', 'Futuro Martín', 'Vivero López',
+      'Louis van Canteral', 'Johan Cruyffuturo', 'Pep Guardiolamasía', 'José Mourinfantil', 'Vicente del Bosquejo', 'Cholo Simeonito', 'Carletto Cejaalzada', 'Marcelo Bielsazo', 'Lezama Larrañaga', 'Paco Pañales', 'Iker Infantil', 'Mateo Mocoso', 'Rubén Revelación', 'Gloria Granja', 'Tino Talentoso', 'Pili Pipiola', 'Nacho Novato'],
   };
   LG.aiStaffStars = (t) => U.clamp(Math.round((((t && t.base) || 66) - 63) / 5), 1, 5);
-  LG.makeStaff = function (role, stars, R) {
-    const names = STAFF_NAMES[role];
+  // nombres en uso (personal propio y mercado libre) para no repetir
+  LG.staffNamesUsed = (st) => new Set(Object.values((st && st.staff) || {}).filter(Boolean).map((x) => x.name).concat(((st && st.staffMarket) || []).map((x) => x.name)));
+  LG.makeStaff = function (role, stars, R, used) {
+    const all = STAFF_NAMES[role]; const free = used ? all.filter((n) => !used.has(n)) : all;
+    const name = R.pick(free.length ? free : all); if (used) used.add(name);
     return {
-      id: 's' + Math.floor(R() * 1e9).toString(36), role, stars, name: R.pick(names), age: R.int(31, 66),
+      id: 's' + Math.floor(R() * 1e9).toString(36), role, stars, name, age: R.int(31, 66),
       wage: LG.STAFF_WAGE[stars], tone: R.int(1, 4), hair: R.int(0, 5), glasses: R() < 0.35, beard: R.int(0, 3), cap: R() < 0.2, bald: R() < 0.22, smile: R() < 0.6,
     };
   };
   LG.initStaff = function (st, R) {
     const t = LG.team(st, st.userTeam); const base = LG.aiStaffStars(t);
     st.staff = {};
-    LG.STAFF_ROLES.forEach(([k]) => { st.staff[k] = LG.makeStaff(k, U.clamp(base + R.int(-1, 1), 1, 5), R); });
+    st.staff = {}; const used = LG.staffNamesUsed(st);
+    LG.STAFF_ROLES.forEach(([k]) => { st.staff[k] = LG.makeStaff(k, U.clamp(base + R.int(-1, 1), 1, 5), R, used); });
   };
   LG.staffMarket = function (st, R, keep) {
     const out = keep ? st.staffMarket.slice() : [];
+    const used = new Set(Object.values(st.staff || {}).filter(Boolean).map((x) => x.name).concat(out.map((x) => x.name)));
     LG.STAFF_ROLES.forEach(([k]) => {
       while (out.filter((x) => x.role === k).length < 3) {
         const have = out.filter((x) => x.role === k).map((x) => x.stars);
         let stars = R.weighted([1, 2, 3, 4, 5], (n) => [0, 2, 3, 3, 2, 1.2][n]);
         if (have.indexOf(5) < 0 && have.indexOf(4) < 0 && have.length === 2) stars = R() < 0.5 ? 5 : 4;   // siempre hay alguien top
-        out.push(LG.makeStaff(k, stars, R));
+        out.push(LG.makeStaff(k, stars, R, used));
       }
     });
     st.staffMarket = out;
