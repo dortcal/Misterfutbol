@@ -102,7 +102,7 @@
   // El gol de la simulación se construye siempre con jugadas que se ven: robo, pases hacia el goleador y remate.
   // Los córners, faltas y penaltis se pitan donde está el atacante (nunca se teletransporta el balón).
   MP.directorPlay = function (dt) {
-    if (this.phase !== 'play') return;
+    if (this.phase !== 'play' || !this.director) return;
     this.stageCards(dt);
     if (this.phase !== 'play') return;
     const g = this.pend[0]; if (!g) { this.stageSetPiece(dt); return; }
@@ -263,8 +263,12 @@
   MP.setTaker = function (p) {
     const rs = this.restart; if (!rs || !p) return;
     const og = this.oppGoalX(rs.side); const ang = Math.atan2(PW / 2 - rs.y, og - rs.x);
-    p.x = rs.x - Math.cos(ang) * 0.7; p.y = rs.y - Math.sin(ang) * 0.7; p.tx = p.x; p.ty = p.y; p.vx = p.vy = 0; p.want = 0;
-    rs.taker = p; this.ball.owner = p;
+    const tx = rs.x - Math.cos(ang) * 0.7, ty = rs.y - Math.sin(ang) * 0.7;
+    if (rs.type !== 'kickoff' && U.dist(p.x, p.y, tx, ty) > 0.8) {   // el nuevo lanzador va hasta el balón
+      if (!rs.walk) { rs.walk = []; rs.walkT0 = this.realT; }
+      rs.walk = rs.walk.filter((it) => it[0] !== p && it[0] !== rs.taker); rs.walk.push([p, tx, ty]); p.tx = tx; p.ty = ty; p.want = 1;
+    } else { p.x = tx; p.y = ty; p.tx = p.x; p.ty = p.y; p.vx = p.vy = 0; p.want = 0; }
+    rs.taker = p; this.ball.owner = rs.glide ? null : p;
   };
   // disparo que acaba en gol: al palo contrario del portero, sin que nadie lo toque
   MP.scriptShot = function (p, g, how) {
@@ -360,7 +364,9 @@
 
   MP.place = function (type, side, x, y) {
     // side = equipo que saca
-    const b = this.ball; Object.assign(b, { x, y, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null, shotSaveTried: false, script: null, scriptCross: null, cornerOut: false, deflect: null });
+    const b = this.ball; const bx0 = b.x, by0 = b.y, bz0 = b.z || 0;
+    const snap = this.all().map((p) => [p, p.x, p.y]);
+    Object.assign(b, { x, y, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null, shotSaveTried: false, script: null, scriptCross: null, cornerOut: false, deflect: null });
     let taker = null;
     if (type === 'goalkick') taker = this.gk(side);
     else if (type === 'penalty') {
@@ -371,10 +377,22 @@
     } else {
       taker = this.active(side).filter((p) => !p.isGK || type === 'free' && this.ax(side, x) < 0.2).sort((a, b) => U.dist(a.x, a.y, x, y) - U.dist(b.x, b.y, x, y))[0];
     }
+    // falta al borde del área: la lanza el especialista, que va andando hasta el balón
+    if (type === 'free' && U.dist(x, y, this.oppGoalX(side), PW / 2) < 28 && Math.abs(y - PW / 2) < 18) {
+      const sp = this.active(side).filter((q) => !q.isGK).sort((a, c) => c.a.tir - a.a.tir)[0]; if (sp) taker = sp;
+    }
     if (!taker) taker = this.active(side)[0];
     const p0x = taker.x, p0y = taker.y;
     this.restart = { type, side, taker, x, y };
     this.phase = 'restart'; this.phaseT = type === 'penalty' ? 2.2 : type === 'corner' ? 1.6 : type === 'throw' ? 0.9 : 1.2;
+    // el balón no salta al punto del saque: viaja hasta él (rodando o devuelto por el aire) y el saque espera a que llegue
+    const gd = Number.isFinite(bx0) ? U.dist(bx0, by0, x, y) : 0;
+    if (gd > 0.6) {
+      const dur = U.clamp(0.25 + gd / 18, 0.3, 1.4);
+      this.restart.glide = { x0: bx0, y0: by0, z0: bz0, t0: this.realT, dur, h: gd > 7 ? Math.min(3.5, gd * 0.12) : 0 };
+      b.x = bx0; b.y = by0; b.z = bz0;
+      this.phaseT = Math.max(this.phaseT, dur + 0.15);
+    }
     // el ejecutor se coloca junto al balón
     const og = this.oppGoalX(side);
     const ang = Math.atan2(PW / 2 - y, og - x);
@@ -422,7 +440,39 @@
         if (d < 9.15 && !p.isGK && !(this.restart.wall && this.restart.wall.indexOf(p) >= 0)) { const a = Math.atan2(p.y - y, p.x - x); p.x = x + Math.cos(a) * 9.4; p.y = y + Math.sin(a) * 9.4; }
       });
     }
-    b.owner = taker;
+    // nadie se teletransporta: los que cambian de sitio (lanzador, barrera, distancia reglamentaria, penalti, saque de puerta) van andando o corriendo
+    if (type !== 'kickoff') {
+      const walk = [];
+      snap.forEach(([p, x0, y0]) => {
+        if (p.off || !Number.isFinite(x0) || U.dist(p.x, p.y, x0, y0) < 0.8) return;
+        if (this.restart.plan) { if (p !== taker) { p.x = x0; p.y = y0; } return; }   // en las jugadas de estrategia el plan ya los lleva andando a su puesto
+        walk.push([p, p.x, p.y]); p.x = x0; p.y = y0; p.tx = walk[walk.length - 1][1]; p.ty = walk[walk.length - 1][2]; p.want = 1;
+      });
+      if (walk.length) { this.restart.walk = walk; this.restart.walkT0 = this.realT; }
+    }
+    b.owner = this.restart.glide ? null : taker;
+  };
+  // jugadores yendo a su sitio para el saque; devuelve true mientras alguno no ha llegado
+  MP.walkers = function () {
+    const rs = this.restart, w = rs && rs.walk; if (!w) return false;
+    let left = 0;
+    w.forEach((it) => {
+      const p = it[0]; if (p.off) return;
+      const d = U.dist(p.x, p.y, it[1], it[2]); p.tx = it[1]; p.ty = it[2];
+      if (d > 0.6) { left++; p.want = 1; } else p.want = 0;
+    });
+    if (!left || this.realT - rs.walkT0 > 3.5) { rs.walk = null; return false; }
+    return true;
+  };
+  // balón viajando al punto del saque; devuelve true mientras no ha llegado
+  MP.glideBall = function () {
+    const rs = this.restart, gl = rs && rs.glide, b = this.ball; if (!gl) return false;
+    const u = U.clamp((this.realT - gl.t0) / gl.dur, 0, 1), e = u * (2 - u);
+    const tx = rs.type === 'kickoff' ? PL / 2 : rs.x, ty = rs.type === 'kickoff' ? PW / 2 : rs.y;
+    b.owner = null; b.vx = b.vy = b.vz = 0; b.x = gl.x0 + (tx - gl.x0) * e; b.y = gl.y0 + (ty - gl.y0) * e; b.z = gl.z0 * (1 - u) + gl.h * 4 * u * (1 - u);
+    if (u < 1) return true;
+    rs.glide = null; b.z = 0; if (rs.taker && !rs.plan) b.owner = rs.taker;
+    return false;
   };
 
   // --------- bucle principal
@@ -444,13 +494,14 @@
     const rsH = this.restart;
     this.waitingHuman = (this.phase === 'kickoff' || this.phase === 'restart') && rsH && rsH.side === this.human && this.human >= 0 && rsH.type !== 'goalkick';
     if (this.waitingHuman) {
-      this.thinkPositions(dt, true); this.moveAll(dt, true);
+      this.thinkPositions(dt, true); const walkingH = this.walkers(); this.moveAll(dt, true);
+      if (this.glideBall()) return;
       const bx = rsH.type === 'kickoff' ? PL / 2 : rsH.x, by = rsH.type === 'kickoff' ? PW / 2 : rsH.y;
       this.ball.x = bx; this.ball.y = by; this.ball.z = 0; this.ball.owner = rsH.taker;
       this.ctrl = rsH.taker;
       const I = this.input; const mag = Math.hypot(I.mx, I.my);
       if (mag > 0.15) this.restartAim = Math.atan2(I.my, I.mx);
-      if (this.phaseT > 0) { this.phaseT -= dt; I.btnRel = I.passRel = I.shootRel = false; return; }
+      if (this.phaseT > 0 || walkingH) { this.phaseT -= dt; I.btnRel = I.passRel = I.shootRel = false; return; }
       this.waitT = (this.waitT || 0) + dt;
       if (I.btnRel || I.passRel || I.shootRel) {
         const held = I.btnRel ? I.btnHeldT || 0 : 0; I.btnRel = I.passRel = I.shootRel = false; I.lastA = null;
@@ -483,10 +534,14 @@
       if (this.realT - this.restartT0 > 9 && this.restart) { b.owner = this.restart.taker; this.executeRestart(); return; }
       if (this.realT - this.restartT0 > 0.4) this.protestCards();
       this.thinkPositions(dt, true);
+      const walking = this.walkers();
       this.moveAll(dt, true);
-      const tk = this.restart && this.restart.taker; if (tk) { b.x = this.restart.type === 'kickoff' ? PL / 2 : this.restart.x; b.y = this.restart.type === 'kickoff' ? PW / 2 : this.restart.y; b.z = 0; }
-      if (this.restart && this.restart.plan) { b.owner = null; if (this.phaseT <= 0 && this.cornerReady()) { b.owner = this.restart.taker; this.executeRestart(); } return; }
-      if (this.phaseT <= 0) this.executeRestart();
+      const tk = this.restart && this.restart.taker;
+      if (this.restart && this.restart.glide) {   // el balón va hacia el punto del saque
+        if (this.glideBall()) { this.phaseT = Math.max(this.phaseT, 0.15); return; }
+      } else if (tk) { b.x = this.restart.type === 'kickoff' ? PL / 2 : this.restart.x; b.y = this.restart.type === 'kickoff' ? PW / 2 : this.restart.y; b.z = 0; }
+      if (this.restart && this.restart.plan) { b.owner = null; if (this.phaseT <= 0 && !walking && this.cornerReady()) { b.owner = this.restart.taker; this.executeRestart(); } return; }
+      if (this.phaseT <= 0 && !walking) this.executeRestart();
       return;
     }
 
@@ -1519,7 +1574,7 @@
       const down = p.state === 'down' || p.state === 'stumble';
       let maxSp = this.speedOf(p) * (down ? 0.1 : 1);
       if (b.owner === p) maxSp *= 0.86 + p.a.reg / 1000;
-      const want = calm && !(this.restart && this.restart.plan) ? Math.min(p.want, 0.75) : p.want;   // en los córners se llega rápido al área
+      const want = calm && !(this.restart && (this.restart.plan || this.restart.walk)) ? Math.min(p.want, 0.75) : p.want;   // en los córners se llega rápido al área
       let dx = p.tx - p.x, dy = p.ty - p.y; const d = Math.hypot(dx, dy);
       let desV = d > 0.25 ? Math.min(maxSp * want, d * 2.6) : 0;
       let dvx = d > 0 ? dx / d * desV : 0, dvy = d > 0 ? dy / d * desV : 0;
@@ -1863,7 +1918,7 @@
       const gx = this.oppGoalX(s); const d = U.dist(rs.x, rs.y, gx, PW / 2);
       if (d < 28 && Math.abs(rs.y - PW / 2) < 18 && this.R() < 0.6) {
         const shooter = this.active(s).filter((q) => !q.isGK).sort((a, c) => c.a.tir - a.a.tir)[0];
-        if (shooter && shooter !== p) { b.owner = shooter; shooter.x = rs.x - this.dir[s] * 0.7; shooter.y = rs.y; }
+        if (shooter && shooter !== p && U.dist(shooter.x, shooter.y, rs.x, rs.y) < 1.5) b.owner = shooter;   // el especialista ya estaba junto al balón
         this.shoot(b.owner, null, 0.9); this.wallCheck(rs); return;
       }
     }
