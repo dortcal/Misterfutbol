@@ -11,9 +11,9 @@
 
   // Calendario (jornada de Liga ANTES de la cual se juega cada fecha europea)
   EU.CFG = {
-    ucl: { name: 'Champions League', short: 'Champions', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 3, prize: { part: 7, win: 0.8, draw: 0.3, ko: [1.5, 3, 4, 5, 6], champ: 5 } },
-    uel: { name: 'Europa League', short: 'Europa League', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 2, prize: { part: 1.7, win: 0.2, draw: 0.07, ko: [0.3, 0.6, 1, 1.5, 2], champ: 2 } },
-    uecl: { name: 'Conference League', short: 'Conference', md: 6, mdDays: [8, 9, 11, 13, 15, 16], order: 1, prize: { part: 1.2, win: 0.12, draw: 0.04, ko: [0.2, 0.4, 0.7, 1, 1.4], champ: 1.5 } },
+    ucl: { name: 'Champions League', short: 'Champions', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 3, prize: { part: 7, win: 0.8, draw: 0.3, ko: [1.5, 3, 4, 5, 6], champ: 10 } },
+    uel: { name: 'Europa League', short: 'Europa League', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 2, prize: { part: 1.7, win: 0.2, draw: 0.07, ko: [0.3, 0.6, 1, 1.5, 2], champ: 4 } },
+    uecl: { name: 'Conference League', short: 'Conference', md: 6, mdDays: [8, 9, 11, 13, 15, 16], order: 1, prize: { part: 1.2, win: 0.12, draw: 0.04, ko: [0.2, 0.4, 0.7, 1, 1.4], champ: 2.5 } },
   };
   EU.KO = [['po', 'Eliminatoria de playoff', [24, 25]], ['r16', 'Octavos de final', [27, 28]], ['qf', 'Cuartos de final', [30, 31]], ['sf', 'Semifinales', [33, 34]], ['f', 'Final', [38]]];
   EU.FINAL_VENUES = { 2026: { ucl: ['Estadio Metropolitano', 'Madrid'], uel: ['Waldstadion', 'Fráncfort'], uecl: ['Beşiktaş Stadium', 'Estambul'] } };
@@ -58,24 +58,27 @@
   };
 
   // Liga de 36 con el método del círculo: cada equipo juega N rivales distintos, mitad en casa y mitad fuera
-  EU.makeComp = function (st, code, teams, R) {
-    const cfg = EU.CFG[code]; const ids = teams.slice(); R.shuffle(ids);
-    if (ids.length % 2) ids.pop();
+  EU.leagueRounds = function (ids, md, R) {
     const n = ids.length; let arr = ids.slice(); const rounds = [];
-    const start = R.int(0, n - 2);
-    for (let r = 0; r < n - 1; r++) {
-      if (r >= start && rounds.length < cfg.md) {
+    const start = R.int(0, Math.max(0, n - 1 - md));   // siempre quedan md jornadas completas
+    for (let r = 0; r < n - 1 && rounds.length < md; r++) {
+      if (r >= start) {
         const games = [];
         for (let i = 0; i < n / 2; i++) { let h = arr[i], a = arr[n - 1 - i]; if ((r + i) % 2) { const x = h; h = a; a = x; } games.push([h, a]); }
         rounds.push(games);
       }
       arr = [arr[0]].concat([arr[n - 1]], arr.slice(1, n - 1));
     }
-    while (rounds.length < cfg.md) rounds.push([]);
     // equilibra casa/fuera: nadie con más de md/2 partidos en casa
     const home = {}; ids.forEach((x) => { home[x] = 0; });
     rounds.forEach((g) => g.forEach((m) => { home[m[0]]++; }));
-    rounds.forEach((g) => g.forEach((m) => { if (home[m[0]] > cfg.md / 2 && home[m[1]] < cfg.md / 2) { home[m[0]]--; home[m[1]]++; const x = m[0]; m[0] = m[1]; m[1] = x; } }));
+    rounds.forEach((g) => g.forEach((m) => { if (home[m[0]] > md / 2 && home[m[1]] < md / 2) { home[m[0]]--; home[m[1]]++; const x = m[0]; m[0] = m[1]; m[1] = x; } }));
+    return rounds;
+  };
+  EU.makeComp = function (st, code, teams, R) {
+    const cfg = EU.CFG[code]; const ids = teams.slice(); R.shuffle(ids);
+    if (ids.length % 2) ids.pop();
+    const rounds = EU.leagueRounds(ids, cfg.md, R);
     const fv = (EU.FINAL_VENUES[st.season] || {})[code];
     return {
       code, name: cfg.name, teams: ids, md: rounds, mdDays: cfg.mdDays.slice(), res: {}, mdPlayed: 0, ko: [], koIdx: 0, phase: 'league',
@@ -163,6 +166,7 @@
     // agg: goles previos [de f.h, de f.a] en la eliminatoria (ida)
     const base = agg || [0, 0];
     const tot = () => [res.score[0] + base[0], res.score[1] + base[1]];
+    if (res.decided) { const t = tot(); res.winSide = t[0] > t[1] ? 0 : t[0] < t[1] ? 1 : (res.pens && res.pens[0] > res.pens[1] ? 0 : 1); return res; }
     if (tot()[0] !== tot()[1]) { res.winSide = tot()[0] > tot()[1] ? 0 : 1; return res; }
     // prórroga y penaltis con la misma lógica que la Copa del Rey
     const fake = { h: f.h, a: f.a };
@@ -225,10 +229,12 @@
     }
     if (ev.type === 'supercup') {
       const S = E.supercup; S.hg = res.score[0]; S.ag = res.score[1]; S.pens = res.pens || null; S.et = !!res.et; S.w = res.winSide === 0 ? f.h : f.a; S.played = true;
+      EU.pay(st, S.w, 4, 'Supercopa de Europa: premio al campeón'); EU.pay(st, S.w === f.h ? f.a : f.h, 2.5, 'Supercopa de Europa: finalista');
       EU.title(st, S.w, 'supercopa', 'la Supercopa de Europa');
     }
     if (ev.type === 'inter') {
       const I = E.inter; I.hg = res.score[0]; I.ag = res.score[1]; I.pens = res.pens || null; I.et = !!res.et; I.w = res.winSide === 0 ? f.h : f.a; I.played = true;
+      EU.pay(st, I.w, 5, 'Copa Intercontinental: premio al campeón'); EU.pay(st, I.w === f.h ? f.a : f.h, 2.5, 'Copa Intercontinental: finalista');
       EU.title(st, I.w, 'inter', 'la Copa Intercontinental');
     }
     if (ev.type === 'cwc') EU.cwcRecord(st, f, res);
@@ -274,7 +280,7 @@
     const winners = K.ties.map((t) => t.w);
     const si = EU.KO.findIndex((x) => x[0] === K.stage);
     K.ties.forEach((t) => { const lost = t.w === t.a ? t.b : t.a; if (lost === st.userTeam) LG.news(st, C.name + ': el ' + T(st, st.userTeam).short + ' cae en ' + K.label.toLowerCase() + ' ante el ' + T(st, t.w).short + '.', 'cup'); });
-    winners.forEach((id) => { EU.coef(st, id, 1); EU.pay(st, id, P.ko[Math.min(si + 1, P.ko.length - 1)], C.name + ': premio por superar ' + K.label.toLowerCase()); });
+    winners.forEach((id) => { EU.coef(st, id, 1); if (K.stage !== 'f') EU.pay(st, id, P.ko[Math.min(si + 1, P.ko.length - 1)], C.name + ': premio por superar ' + K.label.toLowerCase()); });
     if (K.stage === 'f') {
       const t = K.ties[0]; C.winner = t.w; C.runnerUp = t.w === t.a ? t.b : t.a; C.phase = 'done';
       EU.pay(st, C.winner, P.champ, C.name + ': campeón');
@@ -342,6 +348,7 @@
         groups[gi].push(id);
       });
     }
+    all.slice(0, 32).forEach((id) => EU.pay(st, id, 15, 'Mundial de Clubes: premio de participación'));
     LG.news(st, 'Arranca el Mundial de Clubes ' + st.season + ' con 32 equipos' + (all.indexOf(st.userTeam) >= 0 ? ': ¡tu equipo está clasificado!' : '.'), 'cup');
     return { season: st.season, teams: all.slice(0, 32), groups, res: {}, stage: 0, ko: [], done: false, winner: null, venue: 'Sede del Mundial de Clubes ' + st.season, goals: {} };
   };
@@ -360,7 +367,10 @@
   EU.cwcRecord = function (st, f, res) {
     const W = st.euro.cwc;
     res.events.forEach((e) => { if (e.type === 'goal' && !e.own) W.goals[e.pid] = (W.goals[e.pid] || 0) + 1; });
-    if (f.group !== undefined) W.res[f.key] = { h: f.h, a: f.a, hg: res.score[0], ag: res.score[1], gi: f.group };
+    if (f.group !== undefined) {
+      W.res[f.key] = { h: f.h, a: f.a, hg: res.score[0], ag: res.score[1], gi: f.group };
+      [[f.h, res.score[0], res.score[1]], [f.a, res.score[1], res.score[0]]].forEach(([tid, x, y]) => EU.pay(st, tid, x > y ? 2 : x === y ? 0.7 : 0, 'Mundial de Clubes: premio por ' + (x > y ? 'victoria' : 'empate')));
+    }
     else { f.tie.hg = res.score[0]; f.tie.ag = res.score[1]; f.tie.pens = res.pens || null; f.tie.et = !!res.et; f.tie.w = res.winSide === 0 ? f.h : f.a; }
   };
   EU.cwcGroup = function (st, gi) {
@@ -383,6 +393,7 @@
       return;
     }
     const K = W.ko[W.stage - 4]; const ws = K.ties.map((t) => t.w);
+    ws.forEach((id) => EU.pay(st, id, [4, 6, 8, 12][W.stage - 4] || 4, 'Mundial de Clubes: premio por superar ' + K.label.toLowerCase()));
     if (W.stage - 4 >= EU.CWC_KO.length - 1) { W.done = true; W.winner = ws[0]; const t = K.ties[0]; W.runnerUp = t.w === t.a ? t.b : t.a; EU.title(st, W.winner, 'mundial', 'el Mundial de Clubes ' + W.season); return; }
     const ties = []; for (let i = 0; i < ws.length; i += 2) ties.push({ a: ws[i], b: ws[i + 1] });
     W.ko.push({ label: EU.CWC_KO[W.stage - 3], ties });
@@ -420,6 +431,17 @@
     const u = st.userTeam;
     if (c.ucl && c.ucl.winner === u && st.trophies.some((x) => x.season === st.season && x.comp === 'liga') && st.trophies.some((x) => x.season === st.season && x.comp === 'copa')) ACH('triplete', st);
   };
+  // repara calendarios con jornadas vacías (error de versiones anteriores)
+  EU.repair = function (st) {
+    const E = st.euro; if (!E || !E.comps) return;
+    EU.CODES.forEach((c) => {
+      const C = E.comps[c]; if (!C || C.phase !== 'league') return;
+      if (!C.md.slice(C.mdPlayed).some((g) => !g.length)) return;
+      const fresh = EU.leagueRounds(C.teams, C.md.length, R_(st, 'repair' + c));
+      for (let k = C.mdPlayed; k < C.md.length; k++) C.md[k] = fresh[k];
+    });
+  };
+
   // competiciones en las que está un equipo esta temporada
   EU.compsOf = function (st, tid) {
     const E = st.euro; if (!E || !E.comps) return [];

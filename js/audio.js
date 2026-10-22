@@ -62,7 +62,9 @@
     [[83, 2], [81, 1], [78, 1], [81, 2], [78, 2]], [[79, 2], [78, 1], [76, 1], [74, 4]], [[76, 1], [79, 1], [83, 2], [81, 1], [79, 1], [76, 2]], [[81, 2], [83, 1], [85, 1], [88, 4]],
     HOOK1, HOOK2, [[79, 1], [78, 1], [76, 1], [78, 1], [81, 2], [83, 2]], [[86, 3], [81, 1], [86, 4]],
   ];
+  A.MUSIC_ENABLED = false;   // melodía de los menús desactivada (se hacía repetitiva); el resto de sonidos sigue activo
   A.startMusic = function () {
+    if (!A.MUSIC_ENABLED) { A.init(); return; }
     if (!A.init() || A.playing) return;
     A.playing = true;
     const c = A.ctx; const bpm = 140; const e = 60 / bpm / 2; // corchea

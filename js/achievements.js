@@ -47,6 +47,7 @@
     ['intercontinental', '🌐', 'Intercontinental', 'Gana la Copa Intercontinental de la FIFA.', 'titulos'],
     ['mundial', '🌍', 'Campeón del mundo', 'Gana el Mundial de Clubes.', 'titulos'],
     ['triplete', '👑', 'Triplete', 'Gana Liga, Copa y Champions en la misma temporada.', 'titulos'],
+    ['supercopa_es', '🎖️', 'Supercampeón de España', 'Gana la Supercopa de España.', 'titulos'],
     ['champions', '🎟️', 'Billete a la Champions', 'Termina entre los cuatro primeros de Primera.', 'titulos'],
     ['pichichi', '👟', 'Pichichi de la casa', 'Un jugador tuyo termina como máximo goleador de tu división.', 'titulos'],
     ['objetivo', '🎯', 'Misión cumplida', 'Cumple el objetivo de la directiva en una temporada.', 'carrera'],

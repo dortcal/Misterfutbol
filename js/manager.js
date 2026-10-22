@@ -121,7 +121,7 @@
       '<div class="cols-2"><nav class="menu" style="max-width:none">' +
       '<button class="bar small" data-act="lineup" data-key="1"><span class="n">1</span><span class="t">Alineación y táctica</span></button>' +
       '<button class="bar small" data-act="squad" data-key="2"><span class="n">2</span><span class="t">Plantilla</span></button>' +
-      '<button class="bar small" data-act="market" data-key="3"><span class="n">3</span><span class="t">Fichajes</span><span class="meta">ABIERTO</span></button>' +
+      '<button class="bar small" data-act="market" data-key="3"><span class="n">3</span><span class="t">Fichajes</span><span class="meta">' + (LG.isWindow(st) ? 'ABIERTO HASTA LA J' + LG.MARKET_CLOSE : 'CERRADO') + '</span></button>' +
       '<button class="bar small" data-act="table" data-key="4"><span class="n">4</span><span class="t">Clasificación</span></button>' +
       '<button class="bar small" data-act="calendar" data-key="5"><span class="n">5</span><span class="t">Calendario y resultados</span></button>' +
       '<button class="bar small" data-act="stats" data-key="6"><span class="n">6</span><span class="t">Estadísticas</span></button>' +
@@ -165,6 +165,8 @@
     MF.MUI.start({
       world: w, home: f.h, away: f.a, lhome: lh, laway: la, thome: so.thome, taway: so.taway,
       simExtra: { drainMul: so.drainMul, injuryMul: so.injuryMul }, assistantStars: LG.stf(st, 'segundo'), seed: st.season * 1000 + st.day * 7 + 3,
+      ko: f.comp === 'cup' || !!f.ko, agg: f.leg === 1 && f.tie && f.tie.legs[0] ? [f.tie.legs[0].ag, f.tie.legs[0].hg] : null,
+      attendance: LG.attendance(st, f).att, capacity: LG.attendance(st, f).cap,
       mode, human: mode === 'jugar' ? userSide : -1, userSide, weather, label: f.label, manager: true,
       neutral: !!f.neutral, venue: f.venue || null, cup: f.comp === 'cup' || !!f.final || f.comp === 'supercup' || f.comp === 'inter' || (f.comp === 'cwc' && !!f.ko),
       onEnd: (res) => { res.mode = mode; const s = LG.playDay(st, res); save(); MGR.dayResults(s); },
@@ -178,7 +180,7 @@
     const sec = (title, list) => '<div class="panel"><h3>' + title + '</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + list.map(({ f, res }) => {
       const me = f.h === st.userTeam || f.a === st.userTeam;
       const g = res.events.filter((e) => e.type === 'goal');
-      const extra = (res.et ? ' <small>pr.</small>' : '') + (res.pens ? '<br><small>pen. ' + res.pens[0] + '-' + res.pens[1] + '</small>' : '');
+      const extra = (res.et ? ' <small>pr.</small>' : '') + (res.pens ? '<br><small>pen. ' + res.pens[0] + '-' + res.pens[1] + '</small>' : '') + (f.leg === 1 && f.tie && f.tie.legs[0] ? '<br><small>ida ' + f.tie.legs[0].hg + '-' + f.tie.legs[0].ag + ' · global ' + (res.score[0] + f.tie.legs[0].ag) + '-' + (res.score[1] + f.tie.legs[0].hg) + '</small>' : '');
       const wcls = (s) => ((f.comp === 'cup' || f.ko) && res.winSide === s ? ' style="font-weight:800"' : '');
       return '<tr class="' + (me ? 'me' : '') + '"><td' + wcls(0) + '>' + GFX.badgeImg(T(f.h), 18) + ' ' + esc(T(f.h).short) + '</td><td class="c"><b>' + res.score[0] + ' - ' + res.score[1] + '</b>' + extra + '</td><td' + wcls(1) + '>' + GFX.badgeImg(T(f.a), 18) + ' ' + esc(T(f.a).short) + '</td><td class="muted hide-sm" style="white-space:normal">' + g.map((e) => esc(st.world.players[e.pid] ? st.world.players[e.pid].short : '') + ' ' + e.min + '\'').join(', ') + '</td></tr>';
     }).join('') + '</tbody></table></div></div>';
@@ -201,7 +203,7 @@
       const mine = (x) => (x.f.h === st.userTeam || x.f.a === st.userTeam ? 1 : 0);
       const sp = (x) => (!T(x.f.h).foreign || !T(x.f.a).foreign ? 1 : 0);
       intl.sort((x, y) => mine(y) - mine(x) || sp(y) - sp(x));
-      parts.push(sec('🌍 ' + esc(intl[0].f.label), intl.slice(0, 18)));
+      parts.push(sec((intl[0].f.comp === 'supes' ? '🎖️ ' : '🌍 ') + esc(intl[0].f.label), intl.slice(0, 18)));
       if (intl.length > 18) parts.push('<p class="muted" style="margin:-4px 0 8px">… y ' + (intl.length - 18) + ' partidos más en «Competiciones internacionales».</p>');
     }
     UI.show(UI.head(cupR.length ? 'Resultados de Copa' : intl.length ? 'Resultados internacionales' : 'Resultados de la jornada', null, null) + '<div class="wrap">' + parts.join('') +
@@ -248,12 +250,12 @@
     let actions = '', acts = {};
     if (mine) {
       const offers = st.offers.filter((o) => o.pid === pid);
-      actions = '<div class="panel"><h3>Mercado</h3>' + (offers.length ? MGR.offersHTML(offers) : '<p class="muted" style="margin:0 0 8px">' + (win ? 'Puedes ponerlo en venta para recibir ofertas.' : 'La temporada ha terminado.') + '</p>') +
+      actions = '<div class="panel"><h3>Mercado</h3>' + (offers.length ? MGR.offersHTML(offers) : '<p class="muted" style="margin:0 0 8px">' + (win ? 'Puedes ponerlo en venta para recibir ofertas (también de clubes extranjeros).' : 'El mercado está cerrado hasta la próxima temporada.') + '</p>') +
         (win ? '<button class="btn" data-act="sell">Poner en venta</button>' : '') + '</div>';
       acts = Object.assign(MGR.offerActs(() => { UI.closeModal(); refresh(); }), { sell: () => { const r = LG.listForSale(st, pid); UI.toast(r.msg); save(); MGR.playerModal(pid, refresh); } });
     } else {
       const ask = LG.askingPrice(st, p); const fx = T(p.team).div >= 4;
-      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">' + (fx ? 'Juega en el ' + esc(T(p.team).name) + ' (' + esc(T(p.team).country || '') + '). Su club pide en torno a ' : 'El ' + esc(T(p.team).short) + ' valora al jugador en torno a ') + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.' + (fx ? ' Las estrellas solo aceptan proyectos a su altura.' : '') + '</p><div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">La temporada ha terminado: el mercado vuelve a abrir con la nueva temporada.</p>') + '</div>';
+      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">' + (fx ? 'Juega en el ' + esc(T(p.team).name) + ' (' + esc(T(p.team).country || '') + '). Su club pide en torno a ' : 'El ' + esc(T(p.team).short) + ' valora al jugador en torno a ') + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.' + (fx ? ' Las estrellas solo aceptan proyectos a su altura.' : '') + '</p><div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">El mercado está cerrado desde la jornada 30 hasta la próxima temporada.</p>') + '</div>';
       acts = {
         offer: () => {
           const v = parseFloat(document.getElementById('offer').value); if (!(v > 0)) { UI.toast('Introduce un importe válido.'); return; }
@@ -279,7 +281,7 @@
     const per = 40; const pages = Math.max(1, Math.ceil(list.length / per)); F.page = Math.min(F.page, pages - 1);
     const shown = list.slice(F.page * per, F.page * per + per);
     const offers = st.offers.filter((o) => w.players[o.pid] && w.players[o.pid].team === st.userTeam);
-    UI.show(MGR.top() + UI.head('Mercado de fichajes', (win ? 'Abierto toda la temporada' : 'Temporada terminada') + ' · Presupuesto ' + U.money(me.budget), 'back') + '<div class="wrap">' +
+    UI.show(MGR.top() + UI.head('Mercado de fichajes', (win ? 'Abierto hasta la jornada ' + LG.MARKET_CLOSE : 'CERRADO hasta la próxima temporada') + ' · Presupuesto ' + U.money(me.budget), 'back') + '<div class="wrap">' +
       (offers.length ? '<div class="panel"><h3>Ofertas por tus jugadores</h3>' + MGR.offersHTML(offers) + '</div>' : '') +
       '<div class="panel" style="display:flex;flex-direction:column;gap:8px"><div class="row"><div class="tabs">' + [['ALL', 'Todos'], ['POR', 'Porteros'], ['DEF', 'Defensas'], ['MED', 'Medios'], ['DEL', 'Delanteros']].map(([k, l]) => '<button class="tab ' + (F.line === k ? 'on' : '') + '" data-act="f" data-k="line" data-v="' + k + '">' + l + '</button>').join('') + '</div></div>' +
       '<div class="row"><div class="tabs">' + [[0, 'Todas'], [1, 'Primera'], [2, 'Segunda'], [3, '1ª RFEF'], [4, 'Otras ligas']].map(([k, l]) => '<button class="tab ' + (F.div === k ? 'on' : '') + '" data-act="f" data-k="div" data-v="' + k + '">' + l + '</button>').join('') + '</div>' +
@@ -316,7 +318,12 @@
 
   MGR.bracketHTML = function () {
     const st = MGR.st; const P = st.playoff; if (!P) return '';
-    const tie = (t, title) => { if (!t) return '<div class="tie"><b>' + title + '</b><br>Por decidir</div>'; const legs = t.legs.map((l) => l ? esc(T(l.h).short) + ' ' + l.hg + '-' + l.ag + ' ' + esc(T(l.a).short) : '').filter(Boolean).join('<br>'); return '<div class="tie"><b>' + title + '</b><br>' + esc(T(t.a).short) + ' vs ' + esc(T(t.b).short) + (legs ? '<br>' + legs : '') + '</div>'; };
+    const tie = (t, title) => {
+      if (!t) return '<div class="tie"><b>' + title + '</b><br>Por decidir</div>';
+      const legs = t.legs.map((l, i) => l ? (i ? 'Vuelta: ' : 'Ida: ') + esc(T(l.h).short) + ' ' + l.hg + '-' + l.ag + ' ' + esc(T(l.a).short) : '').filter(Boolean).join('<br>');
+      const w = t.legs.length === 2 && t.legs[1] ? LG.tieWinner(st, t) : null; const nm = (id) => (w === id ? '<b>' + esc(T(id).short) + ' ✓</b>' : esc(T(id).short));
+      return '<div class="tie"><b>' + title + '</b><br>' + nm(t.a) + ' vs ' + nm(t.b) + (legs ? '<br>' + legs : '') + '</div>';
+    };
     return '<div class="panel"><h3>Playoff de ascenso</h3><div class="bracket">' + tie(P.semis[0], 'Semifinal 1 (3º-6º)') + tie(P.semis[1], 'Semifinal 2 (4º-5º)') + '</div><div style="margin-top:8px">' + tie(P.final, 'Final') + '</div>' + (P.winner ? '<p><b>Asciende: ' + esc(T(P.winner).name) + '</b></p>' : '') + '<p class="muted">Ida en el campo del peor clasificado. Si hay empate en el global, pasa el mejor clasificado.</p></div>';
   };
 
@@ -375,6 +382,11 @@
     UI.show(MGR.top() + UI.head('Finanzas', esc(t.stadium) + ' · ' + t.cap.toLocaleString('es-ES') + ' localidades', 'back') + '<div class="wrap"><div class="grid2">' +
       '<div class="panel"><h3>Resumen</h3><div class="kv"><b>Presupuesto</b><span>' + U.money(t.budget) + '</span><b>Masa salarial</b><span>' + U.money(wages) + ' / temporada</span><b>Derechos de TV</b><span>' + U.money(LG.tvIncome(t)) + ' por jornada</span><b>Último público</b><span>' + (st.lastAttendance ? st.lastAttendance.toLocaleString('es-ES') : '—') + '</span></div></div>' +
       '<div class="panel"><h3>Precio de la entrada</h3><div class="row"><input type="range" min="10" max="150" step="1" value="' + t.ticket + '" data-inp="tp" id="tp" aria-label="Precio de la entrada"><b id="tpv" style="min-width:56px">' + t.ticket + ' €</b></div><p class="muted" id="tpe">Asistencia estimada: ' + est.att.toLocaleString('es-ES') + ' · ' + U.money(est.money) + ' por partido en casa</p></div></div>' +
+      '<div class="panel"><h3>Premios por competición</h3><div class="tbl-wrap"><table class="tbl"><tbody>' +
+      [['Liga (Primera)', 'Por puesto: de ' + U.money(21) + ' (1º) a ' + U.money(2) + ' · campeón +' + U.money(LG.TITLE_PRIZE.liga)], ['Segunda', 'Por puesto hasta ' + U.money(5.5) + ' · campeón +' + U.money(LG.TITLE_PRIZE.segunda) + ' · ascenso +' + U.money(10)],
+        ['Copa del Rey', 'Por ronda superada ' + LG.CUP_PRIZE.slice(0, 5).map((x) => U.money(x)).join(' · ') + ' · campeón +' + U.money(LG.CUP_PRIZE[5] + LG.TITLE_PRIZE.copa)], ['Supercopa de España', U.money(LG.TITLE_PRIZE.supes_semi) + ' semifinal · ' + U.money(LG.TITLE_PRIZE.supes_final) + ' final · campeón ' + U.money(LG.TITLE_PRIZE.supes)]]
+        .concat(MF.EU ? ['ucl', 'uel', 'uecl'].map((c) => { const P = MF.EU.CFG[c].prize; return [MF.EU.CFG[c].name, 'Participación ' + U.money(P.part) + ' · victoria ' + U.money(P.win) + ' · rondas ' + P.ko.map((x) => U.money(x)).join(' · ') + ' · campeón +' + U.money(P.champ)]; }).concat([['Supercopa de Europa', 'Campeón ' + U.money(4) + ' · finalista ' + U.money(2.5)], ['Intercontinental', 'Campeón ' + U.money(5) + ' · finalista ' + U.money(2.5)], ['Mundial de Clubes', 'Participación ' + U.money(15) + ' · victoria ' + U.money(2) + ' · rondas ' + U.money(4) + '-' + U.money(12)]]) : [])
+        .map(([a, b]) => '<tr><td><b>' + esc(a) + '</b></td><td style="white-space:normal">' + esc(b) + '</td></tr>').join('') + '</tbody></table></div></div>' +
       '<div class="panel" style="padding:6px"><h3 style="margin:4px">Movimientos recientes</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jornada</th><th>Concepto</th><th class="num">Importe</th></tr></thead><tbody>' +
       (log.length ? log.map((l) => l.items.map((it, i) => '<tr><td>' + (i === 0 ? 'J' + (l.d + 1) + ' · ' + DB.SEASON_LABEL(l.s) : '') + '</td><td>' + esc(it[0]) + '</td><td class="num" style="color:' + (it[1] < 0 ? '#a01818' : '#1e6b2a') + '">' + U.money(it[1]) + '</td></tr>').join('')).join('') : '<tr><td colspan="3">Todavía no hay movimientos.</td></tr>') + '</tbody></table></div></div></div>',
       {
@@ -384,12 +396,12 @@
   };
 
   // ---------- club, directiva, palmarés, cantera e historial
-  MGR.TROPHY = { liga: ['🏆', 'Liga'], copa: ['🏅', 'Copa del Rey'], ucl: ['🌟', 'Champions'], uel: ['⭐', 'Europa League'], uecl: ['💠', 'Conference League'], recopa: ['🥈', 'Recopa'], supercopa: ['🛡️', 'Supercopa de Europa'], inter: ['🌐', 'Intercontinental'], mundial: ['🌍', 'Mundial de Clubes'], segunda: ['🥇', 'Liga de Segunda'], playoff: ['🎢', 'Playoff de ascenso'] };
+  MGR.TROPHY = { liga: ['🏆', 'Liga'], copa: ['🏅', 'Copa del Rey'], ucl: ['🌟', 'Champions'], uel: ['⭐', 'Europa League'], uecl: ['💠', 'Conference League'], recopa: ['🥈', 'Recopa'], supercopa: ['🛡️', 'Supercopa de Europa'], inter: ['🌐', 'Intercontinental'], mundial: ['🌍', 'Mundial de Clubes'], supes: ['🎖️', 'Supercopa de España'], segunda: ['🥇', 'Liga de Segunda'], playoff: ['🎢', 'Playoff de ascenso'] };
   MGR.palmaresHTML = function (t) {
     const st = MGR.st; const real = t.titles || {}; const game = t.gtitles || {};
     const tile = (k, n, cls) => '<div class="trophy ' + (cls || '') + '"><span class="ico" aria-hidden="true">' + MGR.TROPHY[k][0] + '</span><span class="num">' + n + '</span><span class="lbl">' + MGR.TROPHY[k][1] + '</span></div>';
     const realT = ['liga', 'copa', 'ucl', 'uel', 'recopa'].filter((k) => real[k] > 0);
-    const gameT = ['liga', 'copa', 'ucl', 'uel', 'uecl', 'supercopa', 'inter', 'mundial', 'segunda'].filter((k) => game[k] > 0);
+    const gameT = ['liga', 'copa', 'supes', 'ucl', 'uel', 'uecl', 'supercopa', 'inter', 'mundial', 'segunda'].filter((k) => game[k] > 0);
     const mine = (st.trophies || []).filter((x) => x.team === t.id);
     return '<div class="panel"><h3>Palmarés del ' + esc(t.short) + '</h3>' +
       '<p class="muted" style="margin:0 0 6px">Títulos oficiales reales hasta la temporada 2025-26 (Liga, Copa del Rey y competiciones europeas).</p>' +
@@ -511,9 +523,19 @@
       (r === 0 && C.byes.length ? '<p class="muted" style="margin:4px">Exentos hasta dieciseisavos (mejores medias): ' + C.byes.map((id) => esc(T(id).short)).join(', ') + '.</p>' : '') +
       (rd.ties[0] && rd.ties[0].neutral ? '<p style="margin:4px"><b>Final en campo neutral:</b> ' + esc(C.venue.stadium) + ' (' + esc(C.venue.city) + ').</p>' : '') +
       '<div class="tbl-wrap"><table class="tbl"><tbody>' + rd.ties.map(row).join('') + '</tbody></table></div></div>' +
-      '<div class="panel"><h3>Reglamento</h3><p style="margin-top:0">Eliminatorias a <b>partido único</b> entre semana. Juega en casa el equipo con <b>peor media de jugadores</b>. Si hay empate: prórroga y, si persiste, penaltis. La <b>final</b> se disputa en campo neutral: el estadio del club más potente de Primera que no la juega.</p><p class="muted">Premios por ronda superada: ' + LG.CUP_PRIZE.map((x) => U.money(x)).join(' · ') + ' (+3 M€ al campeón).</p>' +
+      '<div class="panel"><h3>Reglamento</h3><p style="margin-top:0">Eliminatorias a <b>partido único</b> entre semana. Juega en casa el equipo con <b>peor media de jugadores</b>. Si hay empate: prórroga y, si persiste, penaltis. La <b>final</b> se disputa en campo neutral: el estadio del club más potente de Primera que no la juega.</p><p class="muted">Premios por ronda superada: ' + LG.CUP_PRIZE.slice(0, 5).map((x) => U.money(x)).join(' · ') + ' · el campeón suma ' + U.money(LG.CUP_PRIZE[5] + LG.TITLE_PRIZE.copa) + '.</p>' +
       (top ? '<h3>Goleadores de Copa</h3><div class="tbl-wrap"><table class="tbl"><tbody>' + top + '</tbody></table></div>' : '') + '</div></div></div>',
       { back: () => MGR.hub(), rd: (el) => MGR.cup(+el.dataset.r) });
+    // Supercopa de España
+    const S = st.supes; const box = document.querySelector('.wrap');
+    if (box) {
+      const nm = (id) => (T(id) ? GFX.badgeImg(T(id), 18) + ' ' + esc(T(id).short) : '—');
+      const res = (t) => (t.w ? ' <b>' + t.hg + '-' + t.ag + '</b>' + (t.pens ? ' (pen. ' + t.pens[0] + '-' + t.pens[1] + ')' : t.et ? ' (pr.)' : '') : ' vs ');
+      const row = (t) => '<div style="padding:3px 0' + (t.a === st.userTeam || t.b === st.userTeam ? ';background:#fff3b0' : '') + '">' + (t.w === t.a ? '<b>' + nm(t.a) + '</b>' : nm(t.a)) + res(t) + (t.w === t.b ? '<b>' + nm(t.b) + '</b>' : nm(t.b)) + '</div>';
+      const d = document.createElement('div'); d.className = 'panel';
+      d.innerHTML = '<h3>🎖️ Supercopa de España ' + DB.SEASON_LABEL(st.season) + '</h3>' + (S ? '<p class="muted" style="margin-top:0">Campeón y subcampeón de Liga y finalistas de Copa de la temporada anterior. Semifinales y final a partido único en campo neutral antes de la jornada ' + (LG.SUPES_DAY + 1) + '. Premios: ' + U.money(LG.TITLE_PRIZE.supes_semi) + ' por semifinal, ' + U.money(LG.TITLE_PRIZE.supes_final) + ' al finalista y ' + U.money(LG.TITLE_PRIZE.supes) + ' al campeón.</p><h4 style="margin:4px 0">Semifinales</h4>' + S.semis.map((t) => row(t) + '<div class="muted" style="font-size:12px">' + esc(t.venue) + '</div>').join('') + (S.final ? '<h4 style="margin:8px 0 4px">Final · ' + esc(S.finalVenue) + '</h4>' + row(S.final) : '') + (S.winner ? '<p><b>Campeón: ' + esc(T(S.winner).name) + '</b></p>' : '') : '<p class="muted">Esta temporada no se disputa.</p>');
+      box.appendChild(d);
+    }
   };
 
   MGR.news = function () {

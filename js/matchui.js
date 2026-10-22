@@ -30,6 +30,11 @@
       case 'injury': return P(ev.pid) + ' se duele en el suelo. Parece lesionado.';
       case 'steal': return null;
       case 'halftime': return 'Final de la primera parte.';
+      case 'et_break': return '¡Empate en la eliminatoria! Habrá prórroga.';
+      case 'et1': return 'Comienza la prórroga.';
+      case 'et_half': return 'Descanso de la prórroga.';
+      case 'et2': return 'Arranca la segunda parte de la prórroga.';
+      case 'shootout': return '¡Todo se decide en los penaltis!';
       case 'second': return 'Comienza la segunda parte.';
       case 'end': return 'Final del partido.';
       default: return null;
@@ -137,6 +142,8 @@
       human: cfg.human, kickoff: cfg.kickoff, dirHome: cfg.dirHome, duration: (S.duration || 4) * 60, difficulty: cfg.human >= 0 ? S.difficulty : 1, neutral: !!cfg.neutral, waitHalftime: true,
       manualSubs: cfg.userSide !== undefined && cfg.userSide >= 0 && !S.assistant ? [cfg.userSide === 0, cfg.userSide === 1] : null, hooks,
       drainMul: cfg.simExtra && cfg.simExtra.drainMul,
+      // eliminatoria: si acaba igualada (con el global de la ida) hay prórroga y penaltis en el propio partido
+      agg: cfg.agg || [0, 0], etCheck: cfg.ko ? (sc) => sc[0] + (cfg.agg ? cfg.agg[0] : 0) === sc[1] + (cfg.agg ? cfg.agg[1] : 0) : null,
     });
     MUI.m = m; MUI.R = null;
     const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather, camera: S.camera || 'total', touch }); MUI.R = R;
@@ -161,11 +168,43 @@
       if (ev.type === 'goalkick') showBanner('<div class="big" style="font-size:clamp(30px,7vw,64px)">FUERA DE META</div>', 1.6);
       if (ev.type === 'penalty') showBanner('<div class="big" style="font-size:clamp(36px,9vw,80px)">¡PENALTI!</div>', 2);
       if (ev.type === 'halftime') { A.sfxPlay('whistle', 2); setTimeout(() => halftime(), 900); }
+      if (ev.type === 'et_break') { A.sfxPlay('whistle', 3); showBanner('<div class="big" style="font-size:clamp(34px,8vw,72px)">PRÓRROGA</div>', 2.4); setTimeout(() => halftime('Final de los 90 minutos · Prórroga', 'Empezar la prórroga'), 1400); }
+      if (ev.type === 'et_half') { A.sfxPlay('whistle', 2); setTimeout(() => halftime('Descanso de la prórroga', 'Segunda parte de la prórroga'), 900); }
+      if (ev.type === 'shootout') { A.sfxPlay('whistle', 3); showBanner('<div class="big" style="font-size:clamp(30px,7vw,64px)">PENALTIS</div>', 2); }
       if (ev.type === 'end') A.sfxPlay('whistle', 3);
       if (ev.type === 'second') showBanner('<span class="sm">Segunda parte</span>', 1.5);
       showTick(txt);
     };
     hooks.end = () => { ended = true; setTimeout(() => finish(m.result()), 1600); };
+    // tanda de penaltis animada lanzamiento a lanzamiento
+    hooks.shootout = (so) => {
+      setTimeout(() => {
+        paused = true; const sc = [0, 0]; let i = 0;
+        const row = (side) => so.kicks.filter((k, j) => j < i && k.side === side).map((k) => '<span class="pk ' + (k.goal ? 'g' : 'f') + '">' + (k.goal ? '●' : '✕') + '</span>').join('');
+        const draw = (msg) => {
+          ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">Tanda de penaltis</div></div><div class="body"><div class="shootout">' +
+            '<div class="so-team">' + GFX.badgeImg(th, 40) + '<b>' + esc(th.short) + '</b><span class="so-row">' + row(0) + '</span><span class="so-n">' + sc[0] + '</span></div>' +
+            '<div class="so-team">' + GFX.badgeImg(ta, 40) + '<b>' + esc(ta.short) + '</b><span class="so-row">' + row(1) + '</span><span class="so-n">' + sc[1] + '</span></div>' +
+            '<p class="so-msg">' + msg + '</p></div></div></div></div>';
+        };
+        draw('Se preparan los lanzadores…');
+        const next = () => {
+          if (i >= so.kicks.length) {
+            const wn = sc[0] > sc[1] ? th : ta; draw('<b>¡' + esc(wn.short) + ' gana en los penaltis (' + sc[0] + '-' + sc[1] + ')!</b>'); A.sfxPlay('win');
+            setTimeout(() => { ovl.innerHTML = ''; paused = false; m.finishShootout(so.p); }, 2600); return;
+          }
+          const k = so.kicks[i]; const p = w.players[k.pid];
+          draw(esc(p ? p.name : '') + ' coge el balón…');
+          setTimeout(() => {
+            i++; if (k.goal) sc[k.side]++;
+            draw(k.goal ? '¡GOL de ' + esc(p ? p.short : '') + '!' : k.miss ? '¡Fuera! ' + esc(p ? p.short : '') + ' lo manda lejos.' : '¡PARADA! ' + esc(w.players[k.gk] ? w.players[k.gk].short : 'el portero') + ' adivina el lanzamiento.');
+            A.sfxPlay(k.goal ? 'goal' : 'save');
+            setTimeout(next, 1100);
+          }, 900);
+        };
+        setTimeout(next, 900);
+      }, 1500);
+    };
 
     // ---- entrada (teclado y táctil)
     const keys = {}; let scr = [0, 0];
@@ -271,8 +310,8 @@
         if (o === 'tac') tacMenu();
         if (o === 'quick') { const res = m.finishQuick(); ended = true; finish(res); }
         if (o === 'quit') { cleanup(); cfg.onExit && cfg.onExit(); }
-        if (o === 'second') { ovl.innerHTML = ''; paused = false; m.startSecondHalf(); }
-        if (o === 'back') { if (m.phase === 'halftime') halftime(); else pauseMenu(); }
+        if (o === 'second') { ovl.innerHTML = ''; paused = false; m.resumeBreak(); }
+        if (o === 'back') { if (m.phase === 'halftime') halftime(MUI._htTitle, MUI._htBtn); else pauseMenu(); }
       }));
     }
     function statsHTML() {
@@ -280,11 +319,12 @@
       const row = (l, a, b) => MUI.statRow(l, a, b, cfg.kits);
       return '<div class="panel" style="display:grid;gap:6px">' + row('Posesión %', pos, 100 - pos) + row('Tiros', st.shots[0], st.shots[1]) + row('A puerta', st.onTarget[0], st.onTarget[1]) + row('Córners', st.corners[0], st.corners[1]) + row('Faltas', st.fouls[0], st.fouls[1]) + '</div>';
     }
-    function subsMenu() {
+    function subsMenu(done) {
+      done = done || [];
       const s = userSide; const onp = m.P[s].filter((p) => !p.off); const bench = m.benchAvail(s);
       let outSel = null;
       const draw = () => {
-        ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">Cambios · quedan ' + m.subsLeft[s] + '</div><button class="btn alt" data-o="back">◀</button></div><div class="body"><p class="muted" style="margin:0">Elige quién sale y después quién entra.</p><div class="cols-2"><div><h3>En el campo</h3><table class="tbl"><tbody>' +
+        ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">Cambios · quedan ' + m.subsLeft[s] + '</div><button class="btn goldb" data-o="back">' + (done.length ? '✓ Listo' : '◀') + '</button></div><div class="body"><p class="muted" style="margin:0">Elige quién sale y después quién entra. Puedes hacer varios cambios seguidos.' + (done.length ? '<br><b>Cambios hechos:</b> ' + done.map(esc).join(' · ') : '') + '</p><div class="cols-2"><div><h3>En el campo</h3><table class="tbl"><tbody>' +
           onp.map((p) => '<tr class="click ' + (outSel === p ? 'me' : '') + '" data-out="' + p.d.id + '"><td>' + p.role + '</td><td>' + UI.ovr(p.d.ovr) + ' ' + esc(p.d.short) + (p.injured ? ' <span class="tag t-inj">LES</span>' : '') + (p.yel ? ' <span class="tag" style="background:#e0a800">TA</span>' : '') + '</td><td>' + UI.fit(p.stam * 100) + '</td></tr>').join('') +
           '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((p) => '<tr class="click" data-in="' + p.id + '"><td>' + UI.pos(p) + '</td><td>' + esc(p.short) + '</td><td>' + UI.ovr(p.ovr) + '</td></tr>').join('') : '<tr><td>Sin suplentes disponibles</td></tr>') + '</tbody></table></div></div></div></div></div>';
         bindOverlay();
@@ -292,7 +332,8 @@
         ovl.querySelectorAll('[data-in]').forEach((r) => r.addEventListener('click', () => {
           if (!outSel) { UI.toast('Primero elige quién sale.'); return; }
           if (m.subsLeft[s] <= 0) { UI.toast('Ya no quedan cambios.'); return; }
-          if (m.substitute(s, outSel, +r.dataset.in)) { A.sfxPlay('whistle', 1); UI.toast('Cambio realizado.'); if (m.phase === 'halftime') halftime(); else pauseMenu(); }
+          // se queda en el menú para poder programar varios cambios seguidos
+          if (m.substitute(s, outSel, +r.dataset.in)) { A.sfxPlay('whistle', 1); done.push(outSel.d.short + ' ⇄ ' + (w.players[+r.dataset.in] ? w.players[+r.dataset.in].short : '')); subsMenu(done); }
         }));
       };
       draw();
@@ -307,10 +348,11 @@
       bindOverlay();
       ovl.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; m.retune(); if (cfg.onTactics) cfg.onTactics(t); tacMenu(); }));
     }
-    function halftime() {
-      paused = true;
-      ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">Descanso · ' + esc(th.short) + ' ' + m.score[0] + '-' + m.score[1] + ' ' + esc(ta.short) + '</div></div><div class="body">' + statsHTML() +
-        '<div class="menu" style="max-width:none"><button class="bar small gold" data-o="second"><span class="n">▶</span><span class="t">Segunda parte</span></button>' +
+    function halftime(title, btn) {
+      paused = true; MUI._htTitle = title; MUI._htBtn = btn;
+      const agg = cfg.agg && m.half >= 2.5 ? ' · global ' + (m.score[0] + cfg.agg[0]) + '-' + (m.score[1] + cfg.agg[1]) : '';
+      ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">' + esc(title || 'Descanso') + ' · ' + esc(th.short) + ' ' + m.score[0] + '-' + m.score[1] + ' ' + esc(ta.short) + agg + '</div></div><div class="body">' + (m.half === 2.5 ? '<p style="margin:0 0 6px"><b>La eliminatoria está igualada.</b> Se juega una prórroga de 30 minutos y, si sigue el empate, penaltis. Tienes un cambio más.</p>' : '') + statsHTML() +
+        '<div class="menu" style="max-width:none"><button class="bar small gold" data-o="second"><span class="n">▶</span><span class="t">' + esc(btn || 'Segunda parte') + '</span></button>' +
         (userSide >= 0 ? '<button class="bar small" data-o="subs"><span class="n">⇄</span><span class="t">Cambios (' + m.subsLeft[userSide] + ')</span></button><button class="bar small" data-o="tac"><span class="n">♟</span><span class="t">Táctica</span></button>' : '') +
         '<button class="bar small grey" data-o="quick"><span class="n">»</span><span class="t">Simular hasta el final</span></button></div></div></div></div>';
       bindOverlay();
@@ -349,7 +391,7 @@
       frame++;
       if (frame % 2 === 0) {
         root.querySelector('#g0').textContent = m.score[0]; root.querySelector('#g1').textContent = m.score[1];
-        root.querySelector('#clk').textContent = U.pad2(Math.min(m.dispMinute(), 99)) + '\'';
+        root.querySelector('#clk').textContent = U.pad2(Math.min(m.dispMinute(), 120)) + '\'';
         if (radar) R.drawRadar(radar);
       }
       if (m.ctrl && m.ctrl.isGK && m.ball.owner === m.ctrl && m.gkAim !== null && m.gkAim !== undefined && tickT <= 0.31) { tick.textContent = 'Portero: apunta y pulsa ' + (touch ? 'el botón' : 'ESPACIO') + ' (mantén para despejar largo)'; tick.hidden = false; tickT = 0.3; }
@@ -373,7 +415,7 @@
     const us = cfg.userSide !== undefined ? cfg.userSide : cfg.human;
     if (us >= 0) A.sfxPlay(res.score[us] > res.score[1 - us] ? 'win' : res.score[us] < res.score[1 - us] ? 'lose' : 'click');
     if (MF.ACH) MF.ACH.matchEnd(cfg, res);
-    const cupDraw = cfg.cup && res.score[0] === res.score[1];
+    const cupDraw = cfg.cup && !res.decided && res.score[0] === res.score[1];
     const mvpId = Object.keys(res.ratings).sort((a, b) => res.ratings[b] - res.ratings[a])[0];
     const mvp = w.players[mvpId];
     const evs = res.events.filter((e) => ['goal', 'red', 'yellow', 'sub', 'injury'].indexOf(e.type) >= 0);
@@ -390,6 +432,9 @@
     UI.show(UI.head('Final del partido', esc(cfg.label || 'Partido amistoso'), null) + '<div class="wrap">' +
       '<div class="panel"><div class="bigscore">' + GFX.badgeImg(th, 56) + '<span>' + esc(th.abbr) + '</span><span>' + res.score[0] + '</span><span class="sep">-</span><span>' + res.score[1] + '</span><span>' + esc(ta.abbr) + '</span>' + GFX.badgeImg(ta, 56) + '</div>' +
       (evs.length ? '<div class="evlist" style="margin-top:10px">' + rows + '</div>' : '<p class="center muted">Sin goles ni incidencias destacadas.</p>') +
+      (res.et || res.pens ? '<p class="center" style="margin:8px 0 0;font-weight:800">' + (res.et ? 'Tras la prórroga' : '') + (res.pens ? (res.et ? ' · ' : '') + 'Penaltis: ' + esc(th.short) + ' ' + res.pens[0] + '-' + res.pens[1] + ' ' + esc(ta.short) : '') + '</p>' : '') +
+      (cfg.agg && res.decided ? '<p class="center" style="margin:4px 0 0">Global: ' + esc(th.short) + ' ' + (res.score[0] + cfg.agg[0]) + '-' + (res.score[1] + cfg.agg[1]) + ' ' + esc(ta.short) + ' · <b>se clasifica el ' + esc((res.winSide === 0 ? th : ta).short) + '</b></p>' : (res.decided ? '<p class="center" style="margin:4px 0 0"><b>Gana el ' + esc((res.winSide === 0 ? th : ta).short) + '</b></p>' : '')) +
+      (function () { const cap = cfg.capacity || th.cap; let att = cfg.attendance; if (!att && cap) { const fill = U.clamp(0.55 + (Math.max(th.base || 70, ta.base || 70) - 70) * 0.02 + (cfg.friendly ? -0.1 : 0) + ((U.hash(cfg.home + cfg.away) % 12) - 6) / 100, 0.3, 0.99); att = Math.round(cap * fill); } return att && cap ? '<p class="center muted" style="margin:8px 0 0">🏟️ ' + att.toLocaleString('es-ES') + ' espectadores · ' + Math.round(att / cap * 100) + '% del aforo de ' + esc(cfg.venue || th.stadium) + ' (' + cap.toLocaleString('es-ES') + ')</p>' : ''; })() +
       (cupDraw ? '<p class="center" style="margin:10px 0 0"><b>Empate al final de los 90 minutos:</b> la eliminatoria se decide en la prórroga y, si hace falta, en la tanda de penaltis. Pulsa Continuar para conocer el desenlace.</p>' : '') + '</div>' +
       '<div class="grid2"><div class="panel" style="display:grid;gap:6px"><h3>Estadísticas</h3>' + srow('Posesión %', st.poss[0], st.poss[1]) + srow('Tiros', st.shots[0], st.shots[1]) + srow('A puerta', st.onTarget[0], st.onTarget[1]) + srow('Córners', st.corners[0], st.corners[1]) + srow('Faltas', st.fouls[0], st.fouls[1]) + '</div>' +
       '<div class="panel"><h3>Mejor jugador</h3>' + (mvp ? '<div class="pcard"><img class="face" src="' + GFX.face(mvp, w.teams[mvp.team].kit.home.p, 76) + '" width="76" height="76" alt=""><div><div class="big">' + esc(mvp.name) + '</div><div>' + esc(w.teams[mvp.team].short) + ' · nota ' + res.ratings[mvpId].toFixed(1) + '</div></div></div>' : '') + '</div></div>' +
@@ -409,7 +454,12 @@
     let L = [JSON.parse(JSON.stringify(cfg.lhome)), JSON.parse(JSON.stringify(cfg.laway))];
     const TT = [Object.assign({}, cfg.thome || th), Object.assign({}, cfg.taway || ta)];
     const ex = cfg.simExtra || {};
-    let res = null, min = 0, paused = false, speed = S.teleSpeed || 2, timer = null, done = false, iv = null;
+    let res = null, min = 0, paused = false, speed = S.teleSpeed || 2, timer = null, done = false, iv = null, et = false;
+    const agg = cfg.agg || [0, 0];
+    const level = () => res.score[0] + agg[0] === res.score[1] + agg[1];
+    const simTo = (to, auto) => { res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: to, endMinute: et ? 120 : 90, base: res, autoSubs: auto || autoS() })); L = res.L; min = to; };
+    const decide = (pens) => { if (!cfg.ko) return; res.decided = true; res.et = et; if (pens) res.pens = pens; const t0 = res.score[0] + agg[0], t1 = res.score[1] + agg[1]; res.winSide = t0 > t1 ? 0 : t1 > t0 ? 1 : (res.pens[0] > res.pens[1] ? 0 : 1); };
+    const onPitch = (s) => { const reds = new Set(res.events.filter((e) => e.type === 'red' && e.side === s).map((e) => e.pid)); return L[s].xi.filter((id) => id !== null && !reds.has(id)); };
     const sc = [0, 0]; const evShown = new Set();
     const stars = cfg.assistantStars === undefined ? 3 : cfg.assistantStars;
     const assist = () => !!S.assistant;
@@ -448,8 +498,7 @@
       if (!document.getElementById('tmin')) { clearInterval(iv); return; }
       const m = min + 1;
       if (m === 60 || m === 75) { coach(0, m); coach(1, m); }
-      res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: m, base: res, autoSubs: autoS() }));
-      L = res.L; min = m;
+      simTo(m);
       document.getElementById('tmin').textContent = m;
       let stop = '';
       res.events.forEach((e, i) => {
@@ -462,8 +511,30 @@
       });
       document.getElementById('s0').textContent = res.score[0]; document.getElementById('s1').textContent = res.score[1];
       if (m === 45) { line('DESCANSO · ' + res.score[0] + '-' + res.score[1]); if (us >= 0 && !assist()) stop = 'Descanso'; }
-      if (m >= 90) { end(); return; }
+      // eliminatoria igualada: prórroga (con un cambio más) y, si hace falta, penaltis
+      if (m === 90 && cfg.ko && !et && level()) {
+        et = true; res.subsLeft = res.subsLeft.map((x) => x + 1);
+        line('FINAL DE LOS 90 MINUTOS' + (cfg.agg ? ' · GLOBAL ' + (res.score[0] + agg[0]) + '-' + (res.score[1] + agg[1]) : '') + ' · ¡HAY PRÓRROGA!', 'gol');
+        A.sfxPlay('whistle', 3); if (us >= 0 && !assist()) stop = 'Prórroga (tienes un cambio más)';
+      }
+      if (m === 105 && et) { line('DESCANSO DE LA PRÓRROGA · ' + res.score[0] + '-' + res.score[1]); if (us >= 0 && !assist()) stop = 'Descanso de la prórroga'; }
+      if (m >= (et ? 120 : 90)) { if (et && level()) { shootout(); return; } decide(); end(); return; }
       if (stop) openPanel(stop);
+    }
+    // tanda de penaltis en el teletipo
+    function shootout() {
+      clearInterval(iv); done = true;
+      const so = MF.SIM.shootout(w, onPitch(0), onPitch(1), R); const sc = [0, 0];
+      line('¡PENALTIS!', 'gol'); A.sfxPlay('whistle', 3);
+      let i = 0;
+      const nx = () => {
+        if (i >= so.kicks.length) { decide(so.p); line('PENALTIS ' + so.p[0] + '-' + so.p[1] + ' · PASA EL ' + (so.p[0] > so.p[1] ? th : ta).short.toUpperCase(), 'gol'); end(); return; }
+        const k = so.kicks[i++]; if (k.goal) sc[k.side]++;
+        line((k.side === 0 ? th : ta).short.toUpperCase() + ': ' + name(k.pid).toUpperCase() + (k.goal ? ' MARCA' : k.miss ? ' LA ECHA FUERA' : ' FALLA, PARA ' + name(k.gk).toUpperCase()) + ' · ' + sc[0] + '-' + sc[1], k.goal ? '' : 'roja');
+        A.sfxPlay(k.goal ? 'goal' : 'save');
+        setTimeout(nx, speed === 4 ? 250 : 750);
+      };
+      setTimeout(nx, 700);
     }
     function end() {
       done = true; clearInterval(iv);
@@ -472,8 +543,11 @@
     }
     function finishFast() {
       if (done) return; paused = false; document.getElementById('tovl').innerHTML = ''; clearInterval(iv);
-      res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: 90, base: res, autoSubs: [true, true] }));
-      min = 90; done = true; MUI.summary(cfg, res);
+      if (min < 90) simTo(90, [true, true]);
+      if (cfg.ko && !et && level()) { et = true; res.subsLeft = res.subsLeft.map((x) => x + 1); }
+      if (et && min < 120) simTo(120, [true, true]);
+      if (et && level()) decide(MF.SIM.shootout(w, onPitch(0), onPitch(1), R).p); else decide();
+      done = true; MUI.summary(cfg, res);
     }
     // panel de pausa: táctica y sustituciones
     function openPanel(title) {

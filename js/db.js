@@ -18,24 +18,30 @@
   DB.LINE_OF = { POR: 'POR', DFC: 'DEF', LD: 'DEF', LI: 'DEF', MCD: 'MED', MC: 'MED', MCO: 'MED', ED: 'DEL', EI: 'DEL', DC: 'DEL' };
   DB.ROLE_NAME = { POR: 'Portero', DFC: 'Defensa central', LD: 'Lateral derecho', LI: 'Lateral izquierdo', MCD: 'Mediocentro defensivo', MC: 'Centrocampista', MCO: 'Mediapunta', ED: 'Extremo derecho', EI: 'Extremo izquierdo', DC: 'Delantero centro' };
 
-  // Penalización por jugar fuera de su demarcación
-  DB.rolePenalty = function (playerRole, slotRole) {
-    if (playerRole === slotRole) return 0;
+  // Penalización por jugar fuera de su demarcación.
+  // Sin penalización en sus posiciones naturales (algunos jugadores dominan dos o tres).
+  // Misma línea (mismo color: defensas azules, medios verdes, delanteros rojos) → penalización ligera;
+  // cambiar de línea → más acusada, sobre todo de defensa a delantero o al revés. Portero ↔ campo: enorme.
+  DB.rolePenalty = function (playerRole, slotRole, alt) {
+    if (playerRole === slotRole || (alt && alt.indexOf(slotRole) >= 0)) return 0;
     if (playerRole === 'POR' || slotRole === 'POR') return 45;
-    const pair = playerRole + '>' + slotRole;
-    const P = {
-      'LD>LI': 4, 'LI>LD': 4, 'DFC>LD': 6, 'DFC>LI': 6, 'LD>DFC': 6, 'LI>DFC': 6,
-      'MCD>MC': 2, 'MC>MCD': 3, 'MC>MCO': 3, 'MCO>MC': 3, 'MCD>MCO': 7, 'MCO>MCD': 8,
-      'ED>EI': 3, 'EI>ED': 3, 'ED>DC': 5, 'EI>DC': 5, 'DC>ED': 6, 'DC>EI': 6,
-      'MCO>ED': 5, 'MCO>EI': 5, 'ED>MCO': 5, 'EI>MCO': 5, 'MCO>DC': 6, 'DC>MCO': 7,
-      'MCD>DFC': 6, 'DFC>MCD': 7, 'LD>ED': 7, 'LI>EI': 7, 'ED>LD': 8, 'EI>LI': 8, 'MC>ED': 7, 'MC>EI': 7, 'ED>MC': 7, 'EI>MC': 7,
-    };
-    if (P[pair] !== undefined) return P[pair];
     const la = DB.LINE_OF[playerRole], lb = DB.LINE_OF[slotRole];
-    if (la === lb) return 6;
-    if ((la === 'DEF' && lb === 'MED') || (la === 'MED' && lb === 'DEF')) return 11;
-    if ((la === 'MED' && lb === 'DEL') || (la === 'DEL' && lb === 'MED')) return 9;
-    return 20;
+    if (la === lb) return (playerRole === 'MCD' && slotRole === 'MCO') || (playerRole === 'MCO' && slotRole === 'MCD') ? 3 : 2;
+    if ((la === 'DEF' && lb === 'MED') || (la === 'MED' && lb === 'DEF')) return 7;
+    if ((la === 'MED' && lb === 'DEL') || (la === 'DEL' && lb === 'MED')) return 6;
+    return 13;
+  };
+  DB.posPenalty = (p, slotRole) => DB.rolePenalty(p.role, slotRole, p.alt);
+  // posiciones adicionales que domina cada jugador (asignadas de forma estable a partir de su nombre)
+  const ALT = {
+    DFC: [['MCD', 18], ['LD', 8], ['LI', 8]], LD: [['LI', 22], ['DFC', 18], ['ED', 10]], LI: [['LD', 22], ['DFC', 18], ['EI', 10]],
+    MCD: [['MC', 45], ['DFC', 22]], MC: [['MCD', 32], ['MCO', 32]], MCO: [['MC', 38], ['ED', 18], ['EI', 18]],
+    ED: [['EI', 40], ['MCO', 18], ['DC', 16]], EI: [['ED', 40], ['MCO', 18], ['DC', 16]], DC: [['ED', 14], ['EI', 14], ['MCO', 10]],
+  };
+  DB.altRoles = function (name, role) {
+    const out = [];
+    (ALT[role] || []).forEach(([r, pc]) => { if (out.length < 2 && (U.hash(name + '|' + r) % 100) < pc) out.push(r); });
+    return out;
   };
 
   // ---------- Economía
@@ -62,7 +68,7 @@
     const [id, team, num, name, line, role, ovr, age, tone, hair, nat, vel, res, agr, cal, pas, tir, reg, dfn, por, gen] = row;
     const p = {
       id, team, num, name, short: U.surname(name), line, role, ovr, age, tone, hair, nat,
-      at: { vel, res, agr, cal, pas, tir, reg, dfn, por }, gen: !!gen,
+      at: { vel, res, agr, cal, pas, tir, reg, dfn, por }, gen: !!gen, alt: DB.altRoles(name, role),
       fit: 100, mor: 70, inj: 0, sus: 0, yel: 0,
       st: { pj: 0, g: 0, a: 0, ta: 0, tr: 0, rat: 0, ps: 0 },
       pot: 0,
@@ -119,7 +125,7 @@
 
   // Efectividad del jugador en un puesto (media ajustada por forma y moral)
   DB.effOvr = function (p, slotRole) {
-    const pen = slotRole ? DB.rolePenalty(p.role, slotRole) : 0;
+    const pen = slotRole ? DB.posPenalty(p, slotRole) : 0;
     return p.ovr - pen - (100 - p.fit) * 0.12 + (p.mor - 70) * 0.04;
   };
 

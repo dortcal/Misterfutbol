@@ -390,3 +390,18 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
   .ach-toast b { font-size: 15px; }
   .ach-toast .ach-ico { font-size: 22px; width: 28px; }
 }
+/* tanda de penaltis */
+.shootout { display: grid; gap: 10px; }
+.so-team { display: grid; grid-template-columns: 40px 1fr auto; grid-template-rows: auto auto; align-items: center; gap: 2px 10px; padding: 8px; background: #e9ecef; border: 2px solid #6e7378; }
+.so-team img { grid-row: span 2; }
+.so-team b { font-size: 18px; }
+.so-row { display: flex; gap: 4px; flex-wrap: wrap; min-height: 22px; }
+.so-n { grid-row: 1 / span 2; grid-column: 3; font-family: var(--f-digit); font-size: 44px; line-height: 1; }
+.pk { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 14px; color: #fff; font-weight: 800; animation: pop .3s; }
+.pk.g { background: #2f9e44; } .pk.f { background: #c92a2a; }
+.so-msg { font-size: 18px; text-align: center; min-height: 2.6em; margin: 4px 0 0; }
+.alt-pos { display: inline-block; margin-left: 3px; padding: 0 3px; font-size: 9.5px; line-height: 14px; font-weight: 800; color: #39424a; background: #d5dade; border: 1px solid #9aa2a8; border-radius: 2px; vertical-align: middle; letter-spacing: .02em; }
+.slot.warn .sh { border-color: #f2c14a; }
+@media (max-width: 760px) { .lineup { grid-template-columns: minmax(0, 1fr); } .lineup > * { min-width: 0; } }
+.tbl-wrap { overflow-x: auto; }
+@media (max-width: 600px) { .tbl.sq td:nth-child(3) { white-space: normal; } .alt-pos { font-size: 8.5px; padding: 0 2px; } }

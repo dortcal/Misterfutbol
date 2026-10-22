@@ -51,7 +51,7 @@
     const f = DB.FORMATIONS[this.L[side].formation][slot];
     // atributos amplificados: en el motor las diferencias de calidad se notan más
     const a = {}; const home = side === 0 && !this.neutral ? 2 : 0;
-    const pen = DB.rolePenalty(d.role, f[0]) * 0.6;
+    const pen = DB.posPenalty(d, f[0]) * 0.6;
     Object.keys(d.at).forEach((k) => { a[k] = U.clamp(74 + (d.at[k] - 74) * 1.55 + home - pen + (d.fit - 100) * 0.1, 10, 125); });
     if (this.edge) {
       const A = Math.pow(this.edge.A[side], 0.8), K = Math.pow(1 / this.edge.K[side], 0.8);
@@ -77,8 +77,8 @@
   MP.active = function (side) { return this.P[side].filter((p) => !p.off); };
   MP.all = function () { return this.P[0].concat(this.P[1]).filter((p) => !p.off); };
   MP.gk = function (side) { return this.P[side].find((p) => p.isGK && !p.off) || null; };
-  MP.minute = function () { return Math.min(this.half === 1 ? 45 + this.added[0] : 90 + this.added[1], Math.floor(this.t) + 1); };
-  MP.dispMinute = function () { const m = Math.floor(this.t); return this.half === 1 ? Math.min(m, 45 + this.added[0]) : Math.min(m, 90 + this.added[1]); };
+  MP.minute = function () { return Math.min(this.half === 1 ? 45 + this.added[0] : this.half <= 2.5 ? 90 + this.added[1] : this.half <= 3.5 ? 106 : 121, Math.floor(this.t) + 1); };
+  MP.dispMinute = function () { const m = Math.floor(this.t); return this.half === 1 ? Math.min(m, 45 + this.added[0]) : this.half <= 2.5 ? Math.min(m, 90 + this.added[1]) : Math.min(m, this.half <= 3.5 ? 105 : 120); };
   MP.inBox = function (side, x, y) { // ¿(x,y) dentro del área que defiende "side"?
     const ax = this.ax(side, x);
     return ax * PL < BOX_D && Math.abs(y - PW / 2) < BOX_W / 2;
@@ -182,7 +182,8 @@
     dt = dt || STEP; this.realT += dt;
     if (this.phase === 'end') return;
     const b = this.ball;
-    if (this.phase === 'halftime') { this.phaseT -= dt; if (this.phaseT <= 0 && !this.cfg.waitHalftime) this.startSecondHalf(); return; }
+    if (this.phase === 'halftime') { this.phaseT -= dt; if (this.phaseT <= 0 && !this.cfg.waitHalftime) this.resumeBreak(); return; }
+    if (this.phase === 'shootout') return;
     if (this.phase === 'goal') {
       this.phaseT -= dt; this.moveAll(dt, true);
       if (this.phaseT <= 0) this.setKickoff(this.lastConceded);
@@ -212,7 +213,9 @@
     this.waitT = 0;
     this.t += dt * this.minPerSec * (this.phase === 'play' ? 1 : 0.35);
     if (this.half === 1 && this.t >= 45 + this.added[0] && this.phase === 'play' && this.safeToStop()) { this.endHalf(); return; }
-    if (this.half === 2 && this.t >= 90 + this.added[1] && this.phase === 'play' && this.safeToStop()) { this.endMatch(); return; }
+    if (this.half === 2 && this.t >= 90 + this.added[1] && this.phase === 'play' && this.safeToStop()) { this.endRegular(); return; }
+    if (this.half === 3 && this.t >= 105 && this.phase === 'play' && this.safeToStop()) { this.say('et_half', {}); this.phase = 'halftime'; this.phaseT = 2; this.half = 3.5; return; }
+    if (this.half === 4 && this.t >= 120 && this.phase === 'play' && this.safeToStop()) { this.endExtra(); return; }
 
     if (this.phase === 'kickoff' || this.phase === 'restart') {
       this.phaseT -= dt;
@@ -241,7 +244,7 @@
 
   MP.safeToStop = function () {
     const b = this.ball; const ax = b.x / PL;
-    return (ax > 0.3 && ax < 0.7) || this.t > (this.half === 1 ? 47 + this.added[0] : 92 + this.added[1]);
+    return (ax > 0.3 && ax < 0.7) || this.t > (this.half === 1 ? 47 + this.added[0] : this.half === 2 ? 92 + this.added[1] : this.half === 3 ? 106 : 121);
   };
 
   MP.endHalf = function () {
@@ -252,8 +255,37 @@
     this.P.forEach((arr) => arr.forEach((p) => { p.stam = Math.min(1, p.stam + 0.08); }));
     this.say('second', {}); this.setKickoff(1 - this.firstKick);
   };
+  // final de los 90': en eliminatorias igualadas se juega la prórroga (con un cambio más)
+  MP.endRegular = function () {
+    if (this.cfg.etCheck && this.cfg.etCheck(this.score)) {
+      this.et = true; this.subsLeft = this.subsLeft.map((x) => x + 1);
+      this.say('et_break', {}); this.phase = 'halftime'; this.phaseT = 3; this.half = 2.5; return;
+    }
+    this.endMatch();
+  };
+  MP.resumeBreak = function () {
+    if (this.half === 1.5) this.startSecondHalf();
+    else if (this.half === 2.5) this.startExtra(3);
+    else if (this.half === 3.5) this.startExtra(4);
+  };
+  MP.startExtra = function (h) {
+    this.half = h; this.t = h === 3 ? 90 : 105; this.dir = [-this.dir[0], -this.dir[1]];
+    this.P.forEach((arr) => arr.forEach((p) => { p.stam = Math.min(1, p.stam + 0.04); }));
+    this.say(h === 3 ? 'et1' : 'et2', {}); this.setKickoff(h === 3 ? this.firstKick : 1 - this.firstKick);
+  };
+  MP.endExtra = function () {
+    if (this.cfg.etCheck && this.cfg.etCheck(this.score)) {
+      this.phase = 'shootout'; this.say('shootout', {});
+      const xi = [0, 1].map((s) => this.P[s].filter((p) => !p.off).map((p) => p.d.id));
+      const so = MF.SIM.shootout(this.w, xi[0], xi[1], this.R);
+      if (this.hooks.shootout) this.hooks.shootout(so, this); else this.finishShootout(so.p);
+      return;
+    }
+    this.endMatch();
+  };
+  MP.finishShootout = function (p) { this.pens = p; this.endMatch(); };
   MP.endMatch = function () {
-    this.phase = 'end'; this.t = 90 + this.added[1];
+    this.phase = 'end'; this.t = this.half >= 3 ? 120 : 90 + this.added[1];
     this.say('end', {});
     if (this.hooks.end) this.hooks.end(this.result(), this);
   };
@@ -1342,6 +1374,11 @@
     const tot = this.stats.possT[0] + this.stats.possT[1];
     res.stats = { shots: this.stats.shots.slice(), onTarget: this.stats.onTarget.slice(), corners: this.stats.corners.slice(), fouls: this.stats.fouls.slice(), poss: [Math.round(this.stats.possT[0] / tot * 100), 100 - Math.round(this.stats.possT[0] / tot * 100)] };
     res.subsIn = this.subsIn.map((a) => a.slice());
+    if (this.cfg.etCheck) {   // eliminatoria resuelta en el propio partido (prórroga y penaltis incluidos)
+      const agg = this.cfg.agg || [0, 0]; const t0 = res.score[0] + agg[0], t1 = res.score[1] + agg[1];
+      res.et = !!this.et; if (this.pens) res.pens = this.pens.slice(); res.decided = true;
+      res.winSide = t0 > t1 ? 0 : t1 > t0 ? 1 : (this.pens && this.pens[0] > this.pens[1] ? 0 : 1);
+    }
     res.ratings = MF.SIM.ratings(this.w, res, this.L, this.R);
     // ajuste por rendimiento real en el motor
     this.P.forEach((arr) => arr.forEach((p) => {
@@ -1359,12 +1396,25 @@
   // Termina el partido con la simulación rápida desde el minuto actual
   MP.finishQuick = function () {
     const partial = this.result(); partial.done = false;
-    const min = Math.min(89, Math.floor(this.t));
+    const et = this.half >= 2.5;
+    const min = et ? Math.min(119, Math.max(90, Math.floor(this.t))) : Math.min(89, Math.floor(this.t));
     const lh = { formation: this.L[0].formation, xi: this.P[0].map((p) => (p.off ? null : p.d.id)) };
     const la = { formation: this.L[1].formation, xi: this.P[1].map((p) => (p.off ? null : p.d.id)) };
     lh.xi = lh.xi.map((x) => x); la.xi = la.xi.map((x) => x);
-    const res = MF.SIM.play(this.w, { home: this.cfg.home, away: this.cfg.away, lhome: lh, laway: la, thome: this.tac[0], taway: this.tac[1], neutral: this.neutral, rng: this.R, fromMinute: min, base: partial, autoSubs: [false, false] });
+    const res = MF.SIM.play(this.w, { home: this.cfg.home, away: this.cfg.away, lhome: lh, laway: la, thome: this.tac[0], taway: this.tac[1], neutral: this.neutral, rng: this.R, fromMinute: min, toMinute: et ? 120 : 90, endMinute: et ? 120 : 90, base: partial, autoSubs: [false, false] });
     res.subsIn = this.subsIn.map((a) => a.slice());
+    // eliminatoria: si al acabar sigue igualada, prórroga (simulada) y penaltis
+    if (this.cfg.etCheck) {
+      let r2 = res;
+      if (!et && this.cfg.etCheck(res.score)) { r2 = MF.SIM.play(this.w, { home: this.cfg.home, away: this.cfg.away, lhome: res.L[0], laway: res.L[1], thome: this.tac[0], taway: this.tac[1], neutral: this.neutral, rng: this.R, fromMinute: 90, toMinute: 120, endMinute: 120, base: res, autoSubs: [true, true] }); r2.et = true; r2.subsIn = res.subsIn; }
+      else if (et) r2.et = true;
+      if (this.cfg.etCheck(r2.score)) { const xi = [0, 1].map((s2) => this.P[s2].filter((q) => !q.off).map((q) => q.d.id)); r2.pens = MF.SIM.shootout(this.w, xi[0], xi[1], this.R).p; }
+      const agg = this.cfg.agg || [0, 0]; const t0 = r2.score[0] + agg[0], t1 = r2.score[1] + agg[1];
+      r2.decided = true; r2.winSide = t0 > t1 ? 0 : t1 > t0 ? 1 : (r2.pens[0] > r2.pens[1] ? 0 : 1);
+      r2.fatigue = {}; this.P.forEach((arr) => arr.forEach((p) => { r2.fatigue[p.d.id] = Math.max(0.3, p.stam - 0.1); }));
+      this.score = r2.score.slice(); this.events = r2.events; this.phase = 'end';
+      return r2;
+    }
     res.fatigue = {}; this.P.forEach((arr) => arr.forEach((p) => { res.fatigue[p.d.id] = Math.max(0.3, p.stam - 0.1); }));
     this.score = res.score.slice(); this.events = res.events; this.phase = 'end';
     return res;

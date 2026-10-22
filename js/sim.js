@@ -157,7 +157,7 @@
       const avgS = onPitch.map((arr) => U.avg(arr.filter((id) => w.players[id].line !== 'POR'), (id) => res.stam[id]) || 0.8);
       // cambios automáticos (IA o segundo entrenador)
       for (let s = 0; s < 2; s++) {
-        if (!auto[s] || res.subsLeft[s] <= 0 || m < 58 || m > 86 || (m % 7)) continue;
+        if (!auto[s] || res.subsLeft[s] <= 0 || m < 58 || (m > 86 && m < 91) || m > 112 || (m % 7)) continue;
         const tired = onPitch[s].filter((id) => w.players[id].line !== 'POR').sort((a, b) => res.stam[a] - res.stam[b])[0];
         if (!tired || res.stam[tired] > (m >= 77 ? 0.86 : 0.78)) continue;
         const role = slotRole(s, tired);
@@ -170,7 +170,7 @@
         const red = 11 - onPitch[s].length, redO = 11 - onPitch[1 - s].length;
         // el cansancio propio resta llegada y el del rival le abre espacios
         const fat = U.clamp(0.75 + 0.3 * avgS[s], 0.85, 1.05) * U.clamp(1.25 - 0.3 * avgS[1 - s], 0.95, 1.12);
-        let pm = (lam[s] / 90) * (1 - red * 0.13) * (1 + redO * 0.15) * (m > 75 ? 1.1 : 1) * fat;
+        let pm = (lam[s] / 90) * (1 - red * 0.13) * (1 + redO * 0.15) * (m > 90 ? 0.85 : m > 75 ? 1.1 : 1) * fat;
         // goleadas raras: con ventaja clara el equipo levanta el pie
         const diff = res.score[s] - res.score[1 - s];
         if (diff >= 3) pm *= 0.6; if (res.score[s] >= 5) pm *= 0.5;
@@ -220,9 +220,29 @@
     res.events.sort((a, b) => a.min - b.min);
     res.fatigue = {}; Object.keys(res.stam).forEach((id) => { res.fatigue[id] = res.stam[id]; });
     res.L = L;   // alineaciones tras los cambios (para continuar el partido por tramos)
-    if (to >= 90) { res.ratings = SIM.ratings(w, res, [{ xi: res.startXI[0] }, { xi: res.startXI[1] }], R); res.done = true; }
+    if (to >= (opts.endMinute || 90)) { res.ratings = SIM.ratings(w, res, [{ xi: res.startXI[0] }, { xi: res.startXI[1] }], R); res.done = true; }
     return res;
   };
+  // Tanda de penaltis (5 lanzamientos y muerte súbita). xi = jugadores en el campo de cada lado.
+  SIM.shootout = function (w, xi0, xi1, R) {
+    R = R || U.R;
+    const takers = [xi0, xi1].map((xi) => xi.filter((id) => id !== null && w.players[id] && w.players[id].line !== 'POR').sort((a, b) => w.players[b].at.tir - w.players[a].at.tir));
+    const gks = [xi0, xi1].map((xi) => w.players[xi.find((id) => id !== null && w.players[id] && w.players[id].line === 'POR')] || { at: { por: 60 }, id: null });
+    const p = [0, 0], n = [0, 0], kicks = [];
+    const kick = (side) => {
+      const list = takers[side]; const id = list[n[side] % Math.max(1, list.length)]; const sh = w.players[id];
+      const pr = U.clamp(0.76 + ((sh ? sh.at.tir : 65) - gks[1 - side].at.por) / 320, 0.55, 0.92);
+      const goal = R() < pr; n[side]++; if (goal) p[side]++;
+      kicks.push({ side, pid: id, gk: gks[1 - side].id, goal, miss: !goal && R() < 0.35 });
+    };
+    for (let k = 0; k < 5; k++) {
+      for (const side of [0, 1]) { kick(side); if (p[0] + (5 - n[0]) < p[1] || p[1] + (5 - n[1]) < p[0]) return { p, kicks }; }
+    }
+    let g = 0; while (p[0] === p[1] && g++ < 30) { kick(0); kick(1); }
+    if (p[0] === p[1]) p[R() < 0.5 ? 0 : 1]++;
+    return { p, kicks };
+  };
+
   // Sustitución en la simulación: cambia la alineación (L se modifica) y registra el evento
   SIM.applySub = function (res, L, s, outId, inId, m, onPitch, bench) {
     const i = L.xi.indexOf(outId); if (i >= 0) L.xi[i] = inId;

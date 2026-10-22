@@ -13,8 +13,14 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Personal del club** (1 a 5 estrellas, con caras y nombres divertidos): segundo entrenador, recuperador de lesiones, preparador físico, psicólogo, director deportivo, director de marketing y entrenador de cantera. Se pueden despedir y contratar en el mercado libre.
   - **Competiciones internacionales**: Champions, Europa League y Conference League con el formato actual (fase de liga de 36 equipos, previa 9º-24º, eliminatorias a doble partido y final en campo neutral), Supercopa de Europa, Copa Intercontinental de la FIFA y Mundial de Clubes (2029 y cada cuatro años). 130 clubes extranjeros no seleccionables.
   - Cansancio durante el partido (los jugadores cansados corren menos y fallan más), barrera de cuatro jugadores en las faltas cercanas y rivales fuera del área en los saques de meta.
+  - La melodía de los menús está desactivada (se mantienen los efectos y el ambiente).
   - Los veteranos anuncian su retirada durante la temporada y ya no se pueden traspasar. Los filiales no fichan ni pueden subir a Primera.
-  - Plantilla y **mercado abierto toda la temporada**: Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1, Liga Portugal, Saudi Pro League, MLS, Süper Lig). Ofertas recibidas y venta de jugadores.
+  - Plantilla y **mercado abierto hasta la jornada 29** (cerrado de la 30 al final de la temporada): Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1, Liga Portugal, Saudi Pro League, MLS, Süper Lig). Ofertas recibidas (también de clubes extranjeros) y venta de jugadores.
+  - **Supercopa de España** (campeón y subcampeón de Liga y finalistas de Copa). La edición 2027 se juega en Estambul con los emparejamientos reales.
+  - **Premios** por ronda superada y por título en todas las competiciones, según su importancia.
+  - **Eliminatorias**: con empate (o global igualado) se juega la prórroga, con un cambio más, y la tanda de penaltis dentro del propio partido.
+  - **Polivalencia**: algunos jugadores dominan dos o tres posiciones; fuera de ellas rinden algo menos en su misma línea y bastante menos en otra.
+  - En el resumen del partido aparecen los espectadores y el porcentaje de ocupación del estadio.
   - **Copa del Rey** entre semana con Primera, Segunda (sin filiales) y Primera RFEF: partido único en el campo del equipo con peor media de plantilla, prórroga y penaltis si hay empate, y final en campo neutral (estadio del club más potente de Primera que no la juega).
   - Entrenamiento semanal, finanzas (taquilla, TV, salarios, precio de la entrada), cantera.
   - Objetivo de la directiva visible al elegir club y durante la temporada (en objetivo / en riesgo / lejos). Si te alejas mucho, llegan avisos y un ultimátum, y te pueden destituir a mitad de temporada; después recibes ofertas de otros clubes.

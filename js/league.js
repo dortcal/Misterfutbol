@@ -11,7 +11,10 @@
   // Copa del Rey: eliminatorias a partido único entre semana, antes de estas jornadas de Liga
   LG.CUP_DAYS = [5, 12, 17, 23, 26, 32];
   LG.CUP_ROUNDS = ['Primera eliminatoria', 'Dieciseisavos de final', 'Octavos de final', 'Cuartos de final', 'Semifinales', 'Final'];
-  LG.CUP_PRIZE = [0.25, 0.5, 0.9, 1.5, 2.5, 3];   // M€ por superar cada ronda (la final da 3 M€ extra al campeón)
+  LG.CUP_PRIZE = [0.3, 0.6, 1, 2, 3, 3];   // M€ por superar cada ronda (y 6 M€ más para el campeón)
+  // Premios por títulos (M€), según la importancia de la competición
+  LG.TITLE_PRIZE = { liga: 15, segunda: 3, playoff: 2, copa: 6, supes: 8, supes_final: 5, supes_semi: 3 };
+  LG.MARKET_CLOSE = 29;   // el mercado se cierra desde la jornada 30 hasta la temporada siguiente
   const ACH = (id, st) => { if (MF.ACH && (!st || !st.noAch)) MF.ACH.unlock(id); };
   LG.ach = ACH;
 
@@ -67,6 +70,7 @@
     LG.setObjective(st);
     st.cup = LG.setupCup(st, R);
     if (MF.EU) MF.EU.setup(st, true);
+    st.supes = LG.setupSupes(st, true);
     LG.initStaff(st, R); LG.staffMarket(st, R);
     st.finance.start = t.budget;
     LG.news(st, '¡Bienvenido, ' + st.userName + '! La directiva del ' + t.name + ' te presenta como nuevo entrenador. Objetivo: ' + st.board.objective.text + '.', 'board');
@@ -192,12 +196,13 @@
     if (st.seasonOver) return null;
     const evs = [];
     if (LG.cupDue(st)) evs.push({ type: 'cup', day: LG.CUP_DAYS[st.cup.round], order: 5 });
+    if (LG.supesDue(st)) evs.push({ type: 'supes', day: LG.SUPES_DAY, order: 6 + st.supes.round });
     if (MF.EU) MF.EU.events(st).forEach((e) => evs.push(e));
     evs.sort((a, b) => a.day - b.day || a.order - b.order);
     return evs[0] || null;
   };
-  LG.eventFixtures = (st, ev) => (ev.type === 'cup' ? LG.cupFixtures(st) : MF.EU.fixtures(st, ev));
-  LG.playEvent = (st, ev, userRes) => (ev.type === 'cup' ? LG.playCupDay(st, userRes) : MF.EU.play(st, ev, userRes));
+  LG.eventFixtures = (st, ev) => (ev.type === 'cup' ? LG.cupFixtures(st) : ev.type === 'supes' ? LG.supesFixtures(st) : MF.EU.fixtures(st, ev));
+  LG.playEvent = (st, ev, userRes) => (ev.type === 'cup' ? LG.playCupDay(st, userRes) : ev.type === 'supes' ? LG.playSupes(st, userRes) : MF.EU.play(st, ev, userRes));
   // juega en segundo plano las fechas en las que no participa tu equipo (all: también las tuyas)
   LG.flushBackground = function (st, all) {
     for (let g = 0; g < 60; g++) {
@@ -400,8 +405,11 @@
     if (st.staffMarket && st.day % 6 === 5) { st.staffMarket.splice(R.int(0, st.staffMarket.length - 1), 1); st.staffMarket.splice(R.int(0, st.staffMarket.length - 1), 1); LG.staffMarket(st, R, true); }
     LG.retirementNews(st, R);
     // mercado abierto toda la temporada: la IA ficha poco a poco y llegan ofertas cada pocas jornadas
-    if (st.day === 0) { LG.aiTransfers(st, R, 10); LG.incomingOffers(st, R); }
+    if (st.day === LG.MARKET_CLOSE - 1) LG.news(st, 'Se cierra el mercado de fichajes hasta la próxima temporada.', 'market');
+    if (st.day >= LG.MARKET_CLOSE - 1) { /* mercado cerrado */ }
+    else if (st.day === 0) { LG.aiTransfers(st, R, 10); LG.incomingOffers(st, R); }
     else { if (R() < 0.55) LG.aiTransfers(st, R, 1); if (st.day % 3 === 0) LG.incomingOffers(st, R); }
+    if (st.day >= LG.MARKET_CLOSE - 1) st.offers = [];
     st.offers = st.offers.filter((o) => o.day >= st.day - 1);
     st.day++;
     // fin de liga regular de Segunda → playoff
@@ -534,6 +542,15 @@
     const att = Math.round(t.cap * fill);
     return { att, money: att * t.ticket / 1e6 };
   };
+  // espectadores de cualquier partido (los del usuario en casa coinciden con la taquilla)
+  LG.attendance = function (st, f) {
+    const t = LG.team(st, f.h);
+    if (f.neutral) { const cap = (f.comp === 'cup' && st.cup && st.cup.venue && LG.team(st, st.cup.venue.tid)) ? LG.team(st, st.cup.venue.tid).cap : 62000; return { att: Math.round(cap * (0.9 + (U.hash(f.key + st.season) % 9) / 100)), cap }; }
+    if (t.id === st.userTeam && t.div <= 2) { const ti = LG.ticketIncome(st, t, f.a); return { att: ti.att, cap: t.cap }; }
+    const o = LG.team(st, f.a); const big = typeof f.comp === 'string' && f.comp !== 'playoff' ? 0.12 : 0;
+    const fill = U.clamp(0.58 + ((t.mor || 70) - 70) * 0.004 + (((o && o.base) || 70) - 70) * 0.01 + big + ((U.hash(f.key + st.season) % 10) - 5) / 100, 0.3, 1);
+    return { att: Math.round(t.cap * fill), cap: t.cap };
+  };
   LG.tvIncome = (t, st) => (t.div === 1 ? Math.max(0.55, 0.6 + (t.base - 70) * 0.085) : 0.2) * (st && t.id === st.userTeam ? 0.93 + 0.035 * LG.stf(st, 'marketing') : 1);
   LG.wageBill = (st, tid) => U.sum(DB.teamPlayers(st.world, tid), (p) => p.wage);
 
@@ -553,8 +570,15 @@
     if (t.budget < -5 && st.day % 4 === 0) { st.board.conf = Math.max(0, st.board.conf - 4); LG.news(st, 'La directiva está preocupada por las cuentas: el club está en números rojos.', 'board'); }
   };
 
+  // ingreso de premios (con apunte en las finanzas del usuario)
+  LG.prize = function (st, tid, amount, text) {
+    const t = LG.team(st, tid); if (!t || t.foreign || !amount) return;
+    t.budget = Math.round((t.budget + amount) * 100) / 100;
+    if (tid === st.userTeam) { st.finance.log.unshift({ s: st.season, d: st.day, inc: amount, exp: 0, items: [[text, amount]], bal: t.budget }); LG.news(st, text + ': ' + U.money(amount) + '.', 'market'); }
+  };
+
   // ---------- mercado
-  LG.isWindow = (st) => !st.seasonOver;   // el mercado está abierto durante toda la temporada
+  LG.isWindow = (st) => !st.seasonOver && st.day < LG.MARKET_CLOSE;   // abierto hasta la jornada 29
 
   LG.askingPrice = function (st, p) {
     const mates = DB.teamPlayers(st.world, p.team).sort((a, b) => b.ovr - a.ovr);
@@ -566,7 +590,7 @@
 
   LG.makeOffer = function (st, pid, amount) {
     const w = st.world; const p = w.players[pid]; const me = LG.team(st, st.userTeam);
-    if (!LG.isWindow(st)) return { ok: false, msg: 'La temporada ha terminado. El mercado vuelve a abrir con la nueva temporada.' };
+    if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado desde la jornada 30 hasta la próxima temporada.' };
     if (!p || p.team === st.userTeam) return { ok: false, msg: 'Jugador no disponible.' };
     if (p.retiring) return { ok: false, msg: p.name + ' ha anunciado su retirada al final de la temporada y no puede ser traspasado.' };
     if (me.parent) return { ok: false, msg: 'Los filiales no fichan: solo pueden subir jugadores de su cantera.' };
@@ -631,11 +655,14 @@
     const nOff = R.int(0, 2);
     for (let i = 0; i < nOff; i++) {
       const p = R.pick(mine.slice(0, 16)); if (!p || p.retiring) continue;
-      const buyers = st.div[1].concat(st.div[2]).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.9 && DB.teamStrength(w, id) >= p.ovr - 10);
+      let buyers = st.div[1].concat(st.div[2]).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.9 && (w.teams[id].base || 70) >= p.ovr - 10);
+      // clubes extranjeros también pujan por los buenos jugadores
+      const fx = (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12);
+      if (p.ovr >= 72 && fx.length && (R() < 0.45 || !buyers.length)) buyers = fx;
       if (!buyers.length) continue;
       const b = R.pick(buyers); const amount = Math.round(p.value * (0.85 + R() * 0.4) * (0.92 + 0.035 * LG.stf(st, 'dirdep')) * 10) / 10;
       st.offers.push({ id: 'o' + st.day + '_' + i + '_' + p.id, pid: p.id, from: b, amount, day: st.day });
-      LG.news(st, 'Oferta recibida: el ' + w.teams[b].short + ' ofrece ' + U.money(amount) + ' por ' + p.name + '.', 'offer');
+      LG.news(st, 'Oferta recibida: el ' + w.teams[b].short + (w.teams[b].foreign ? ' (' + w.teams[b].country + ')' : '') + ' ofrece ' + U.money(amount) + ' por ' + p.name + '.', 'offer');
     }
   };
 
@@ -654,8 +681,8 @@
   LG.listForSale = function (st, pid) {
     const w = st.world; const p = w.players[pid]; const R = LG.rng(st);
     if (p.retiring) return { ok: false, msg: p.name + ' se retira al final de la temporada: nadie puede ficharlo.' };
-    if (!LG.isWindow(st)) return { ok: false, msg: 'La temporada ha terminado: espera a la próxima para vender.' };
-    const buyers = st.div[1].concat(st.div[2], st.div[3]).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.6 && DB.teamStrength(w, id) >= p.ovr - 12 && DB.teamPlayers(w, id).length < 28);
+    if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado desde la jornada 30: espera a la próxima temporada para vender.' };
+    const buyers = st.div[1].concat(st.div[2], st.div[3], p.ovr >= 72 ? (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12) : []).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.6 && DB.teamStrength(w, id) >= p.ovr - 12 && DB.teamPlayers(w, id).length < 28);
     if (!buyers.length) return { ok: false, msg: 'Ningún club está interesado en ' + p.name + ' ahora mismo.' };
     R.shuffle(buyers);
     const n = Math.min(buyers.length, R.int(1, 3));
@@ -757,6 +784,7 @@
   // Si hay empate: prórroga y, si persiste, tanda de penaltis (simuladas)
   LG.cupResolve = function (st, f, res, L, R) {
     const w = st.world;
+    if (res.decided) { res.winSide = res.score[0] > res.score[1] ? 0 : res.score[0] < res.score[1] ? 1 : (res.pens && res.pens[0] > res.pens[1] ? 0 : 1); return res; }   // ya resuelto en el partido
     res.score = res.score.slice(); res.events = res.events.slice();
     if (res.score[0] === res.score[1]) {
       res.et = true;
@@ -844,9 +872,9 @@
     if (r === LG.CUP_ROUNDS.length - 1) {
       const fin = C.rounds[r].ties[0]; C.winner = fin.w; C.runnerUp = fin.w === fin.h ? fin.a : fin.h;
       const wt = w.teams[C.winner]; wt.gtitles = wt.gtitles || {}; wt.gtitles.copa = (wt.gtitles.copa || 0) + 1;
-      if (C.winner !== st.userTeam) { wt.budget = Math.round((wt.budget + 4) * 100) / 100; LG.news(st, 'El ' + wt.name + ' gana la Copa del Rey ante el ' + w.teams[C.runnerUp].short + ' en el ' + C.venue.stadium + '.', 'cup'); }
+      if (C.winner !== st.userTeam) { wt.budget = Math.round((wt.budget + LG.TITLE_PRIZE.copa) * 100) / 100; LG.news(st, 'El ' + wt.name + ' gana la Copa del Rey ante el ' + w.teams[C.runnerUp].short + ' en el ' + C.venue.stadium + '.', 'cup'); }
       if (C.winner === st.userTeam || C.runnerUp === st.userTeam) ACH('final_copa', st);
-      if (C.winner === st.userTeam) { ACH('copa', st); st.trophies.push({ season: st.season, comp: 'copa', team: st.userTeam }); const me = w.teams[st.userTeam]; me.budget = Math.round((me.budget + 3) * 100) / 100; }
+      if (C.winner === st.userTeam) { ACH('copa', st); st.trophies.push({ season: st.season, comp: 'copa', team: st.userTeam }); LG.prize(st, st.userTeam, LG.TITLE_PRIZE.copa, 'Copa del Rey: premio al campeón'); }
     } else {
       C.alive = winners.concat(r === 0 ? C.byes : []);
       LG.drawCupRound(st, C, R);
@@ -854,6 +882,57 @@
     return summary;
   };
   LG.userInCup = (st) => { const C = st.cup; return !!(C && !C.winner && (C.alive.indexOf(st.userTeam) >= 0 || (C.round === 0 && C.byes.indexOf(st.userTeam) >= 0))); };
+
+  // ---------- SUPERCOPA DE ESPAÑA (4 equipos: campeón y subcampeón de Liga y finalistas de Copa; semifinales y final)
+  LG.SUPES_DAY = 22;
+  LG.setupSupes = function (st, first) {
+    const w = st.world;
+    if (first) {
+      // edición real 2027 (Estambul, 2-6 de febrero): Barcelona-Atlético y Real Sociedad-Real Madrid
+      return { season: st.season, round: 0, done: false, winner: null, final: null, finalVenue: 'RAMS Park (Estambul)',
+        semis: [{ a: 'fcb', b: 'atm', venue: 'Şükrü Saracoğlu (Estambul)' }, { a: 'rso', b: 'rma', venue: 'Tüpraş Stadyumu (Estambul)' }].filter((x) => w.teams[x.a] && w.teams[x.b]) };
+    }
+    const h = st.history[0]; if (!h) return null;
+    const t1 = h.table1 || []; const four = [];
+    const add = (id) => { if (id && w.teams[id] && !w.teams[id].foreign && !w.teams[id].parent && four.indexOf(id) < 0 && four.length < 4) four.push(id); };
+    add(t1[0]); add(t1[1]); if (h.cup) { add(h.cup[0]); add(h.cup[1]); }
+    let k = 2; while (four.length < 4 && k < t1.length) add(t1[k++]);
+    if (four.length < 4) return null;
+    const V = 'Sede neutral de la Supercopa';
+    return { season: st.season, round: 0, done: false, winner: null, final: null, finalVenue: V,
+      semis: [{ a: four[0], b: four[3], venue: V }, { a: four[2], b: four[1], venue: V }] };
+  };
+  LG.supesDue = (st) => !!(st.supes && !st.supes.done && !st.seasonOver && st.day >= LG.SUPES_DAY);
+  LG.supesFixtures = function (st) {
+    const S = st.supes;
+    if (S.round === 0) return S.semis.map((t, i) => ({ h: t.a, a: t.b, key: 'se' + i, comp: 'supes', neutral: true, venue: t.venue, label: 'Supercopa de España · Semifinal', ko: true, tie: t }));
+    return [{ h: S.final.a, a: S.final.b, key: 'sef', comp: 'supes', neutral: true, venue: S.finalVenue, label: 'Supercopa de España · Final', ko: true, tie: S.final }];
+  };
+  LG.playSupes = function (st, userRes) {
+    const R = LG.rng(st); const S = st.supes; const w = st.world; const summary = []; const played = new Set();
+    LG.supesFixtures(st).forEach((f) => {
+      const isUser = f.h === st.userTeam || f.a === st.userTeam;
+      const L = [LG.lineupFor(st, f.h), LG.lineupFor(st, f.a)];
+      let res = isUser && userRes ? userRes : SIM.play(w, LG.simOpts(st, f, L, R));
+      res = LG.cupResolve(st, f, res, L, R);
+      if (MF.EU) MF.EU.applySpanish(st, f, res, L);
+      const t = f.tie; t.hg = res.score[0]; t.ag = res.score[1]; t.pens = res.pens || null; t.et = !!res.et; t.w = res.winSide === 0 ? f.h : f.a;
+      const loser = t.w === f.h ? f.a : f.h;
+      LG.prize(st, loser, S.round === 0 ? LG.TITLE_PRIZE.supes_semi : LG.TITLE_PRIZE.supes_final, 'Supercopa de España: ' + (S.round === 0 ? 'semifinalista' : 'finalista'));
+      played.add(f.h); played.add(f.a); summary.push({ f, res });
+      if (isUser) { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); }
+    });
+    LG.recover(st, played, false);
+    if (S.round === 0) { S.final = { a: S.semis[0].w, b: S.semis[1].w }; S.round = 1; LG.news(st, 'Final de la Supercopa de España: ' + w.teams[S.final.a].short + ' - ' + w.teams[S.final.b].short + '.', 'cup'); }
+    else {
+      S.done = true; S.winner = S.final.w; const wt = w.teams[S.winner];
+      wt.gtitles = wt.gtitles || {}; wt.gtitles.supes = (wt.gtitles.supes || 0) + 1;
+      LG.prize(st, S.winner, LG.TITLE_PRIZE.supes, 'Supercopa de España: premio al campeón');
+      if (S.winner === st.userTeam) { st.trophies.push({ season: st.season, comp: 'supes', team: st.userTeam }); ACH('supercopa_es', st); }
+      LG.news(st, 'El ' + wt.name + ' gana la Supercopa de España.', 'cup');
+    }
+    return summary;
+  };
 
   // ---------- playoff de ascenso (3º-6º de Segunda)
   // los filiales (Real Sociedad B, Celta Fortuna) no pueden ascender a Primera
@@ -900,8 +979,10 @@
     const uT = LG.team(st, st.userTeam);
     const uPos = uT.div <= 2 ? LG.table(st, uT.div).find((r) => r.id === uT.id).pos : null;
     const prize = (div, pos) => (div === 1 ? Math.max(2, 22 - pos) : Math.max(0.5, (23 - pos) * 0.25));
-    [1, 2].forEach((dv) => LG.table(st, dv).forEach((r) => { const t = LG.team(st, r.id); t.budget = Math.round((t.budget + prize(dv, r.pos)) * 100) / 100; }));
-    if (up.indexOf(st.userTeam) >= 0) { uT.budget += 10; }
+    [1, 2].forEach((dv) => LG.table(st, dv).forEach((r) => LG.prize(st, r.id, prize(dv, r.pos), 'Premio de la Liga por terminar ' + r.pos + 'º')));
+    if (up.indexOf(st.userTeam) >= 0) LG.prize(st, st.userTeam, 10, 'Premio por el ascenso a Primera');
+    LG.prize(st, champ1, LG.TITLE_PRIZE.liga, 'Liga: premio al campeón'); LG.prize(st, champ2, LG.TITLE_PRIZE.segunda, 'Segunda: premio al campeón');
+    if (P.winner) LG.prize(st, P.winner, LG.TITLE_PRIZE.playoff, 'Playoff de ascenso: premio al ganador');
     // objetivo
     const obj = st.board.objective; let met = uPos !== null && uPos <= obj.maxPos;
     if (uT.div === 2 && up.indexOf(st.userTeam) >= 0) met = true;
@@ -1007,6 +1088,7 @@
     LG.setObjective(st);
     st.cup = LG.setupCup(st, R);
     if (MF.EU) MF.EU.setup(st, false);
+    st.supes = LG.setupSupes(st, false);
     if (!st.staff) LG.initStaff(st, R);
     LG.staffMarket(st, R);
     LG.aiTransfers(st, R, 14);
@@ -1076,6 +1158,9 @@
     }
     if (st.board && st.board.warn === undefined) st.board.warn = 0;
     if (!st.staff) { const R = LG.rng(st); LG.initStaff(st, R); LG.staffMarket(st, R); }
+    if (st.euro && MF.EU) MF.EU.repair(st);
+    if (st.supes === undefined) st.supes = st.season === 2026 && !st.seasonOver && st.day < LG.SUPES_DAY ? LG.setupSupes(st, true) : null;
+    Object.values(st.world.players).forEach((p) => { if (!p.alt) p.alt = DB.altRoles(p.name, p.role); });
     if (st.euro === undefined && MF.EU) {
       st.euro = null;
       if (!st.seasonOver) { MF.EU.setup(st, st.season === 2026); LG.flushBackground(st, true); }   // las fechas ya pasadas se simulan
