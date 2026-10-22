@@ -25,7 +25,7 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Premios** por ronda superada y por título en todas las competiciones, según su importancia.
   - **Eliminatorias**: con empate (o global igualado) se juega la prórroga, con un cambio más, y la tanda de penaltis dentro del propio partido.
   - **Alineación cómoda en el móvil**: al tocar un titular, la pantalla baja sola hasta los suplentes (con los de su posición en verde) y aparece un aviso abajo con «Cancelar». Al hacer el cambio vuelve al campo para verlo. La página ya no salta arriba con cada toque.
-  - **Plantilla** con dos vistas: «Datos» (media, edad, forma, moral, goles, asistencias, nota y valor) y «Estadísticas de Liga» (partidos, goles, asistencias, nota media, amarillas y rojas, con totales). Se puede ordenar por cualquier columna y la vista de estadísticas cabe en el móvil en vertical.
+  - **Plantilla** con dos vistas: «Datos» (media, edad, forma, moral, goles, asistencias, nota y valor) y «Estadísticas» (partidos, goles, asistencias, nota media, amarillas y rojas, con totales), con selector de competición: Liga, Copa del Rey, Supercopa de España (si se ha jugado), Internacional (Champions, Europa League, Conference, Supercopa de Europa, Intercontinental y Mundial) o Todas. Se puede ordenar por cualquier columna y la vista de estadísticas cabe en el móvil en vertical.
   - **Tarjetas y sanciones por competición**:
     - En Liga, 5 amarillas suponen un partido de sanción en Liga.
     - En Copa, Supercopa y competiciones europeas, 3 amarillas suponen un partido de sanción en esa competición.

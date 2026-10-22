@@ -633,6 +633,22 @@
     }));
   };
 
+  // estadísticas de los jugadores fuera de la Liga (Copa, Supercopa y competiciones internacionales)
+  LG.compStats = function (st, f, res, L, filter) {
+    const w = st.world; const k = DB.compKey(f.comp); if (k === 'liga') return;
+    const S = (p) => { p.stC = p.stC || {}; return (p.stC[k] = p.stC[k] || { pj: 0, g: 0, a: 0, ta: 0, tr: 0, rat: 0, ps: 0 }); };
+    [0, 1].forEach((s) => L[s].xi.filter((x) => x !== null).concat(res.subsIn ? res.subsIn[s] : []).forEach((id) => {
+      const p = w.players[id]; if (!p || (filter && !filter(p))) return;
+      const o = S(p); o.pj++; const r = res.ratings && res.ratings[id]; if (r) { o.rat += r; o.ps++; }
+    }));
+    res.events.forEach((e) => {
+      const p = w.players[e.pid]; if (!p || (filter && !filter(p))) return;
+      if (e.type === 'goal' && !e.own) { S(p).g++; const as = e.assist && w.players[e.assist]; if (as && (!filter || filter(as))) S(as).a++; }
+      if (e.type === 'yellow') S(p).ta++;
+      if (e.type === 'red') S(p).tr++;
+    });
+  };
+
   LG.applyResult = function (st, f, res, L) {
     const w = st.world;
     if (f.comp === 'playoff') {
@@ -1070,7 +1086,7 @@
       if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión en Copa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
     });
     [f.h, f.a].forEach((tid, s) => { const t = w.teams[tid]; t.mor = U.clamp((t.mor || 70) + (res.winSide === s ? 3 : -3), 30, 99); });
-    LG.applyCards(st, f, res);
+    LG.applyCards(st, f, res); LG.compStats(st, f, res, L);
   };
   LG.playCupDay = function (st, userRes) {
     const R = LG.rng(st); const w = st.world; const C = st.cup; const r = C.round;
@@ -1494,7 +1510,7 @@
       d = nv - p.ovr; p.ovr = U.clamp(nv, 40, 95); LG.bumpAttrs(p, d);
       if (p.age >= 30) { p.at.vel = U.clamp(p.at.vel - R.int(0, 2), 10, 99); p.at.res = U.clamp(p.at.res - R.int(0, 2), 10, 99); }
       p.value = DB.playerValue(p); p.wage = DB.playerWage(p);
-      p.st = { pj: 0, g: 0, a: 0, ta: 0, tr: 0, rat: 0, ps: 0 }; p.fit = 100; p.inj = 0; p.sus = 0; p.yel = 0; p.mor = 70; delete p.susC; delete p.yelC; delete p.susY; delete p.justC;
+      p.st = { pj: 0, g: 0, a: 0, ta: 0, tr: 0, rat: 0, ps: 0 }; p.fit = 100; p.inj = 0; p.sus = 0; p.yel = 0; p.mor = 70; delete p.susC; delete p.yelC; delete p.susY; delete p.justC; delete p.stC;
     });
     // retiradas y reposición con canteranos generados
     Object.values(w.players).forEach((p) => {

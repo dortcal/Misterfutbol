@@ -154,6 +154,7 @@
       if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión en Europa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
     });
     LG.applyCards(st, f, res, (p) => isSp(st, p.team));
+    LG.compStats(st, f, res, L, (p) => isSp(st, p.team));
   };
   EU.coef = function (st, tid, pts) { const E = st.euro; const k = String(st.season); E.coef[tid] = E.coef[tid] || {}; E.coef[tid][k] = (E.coef[tid][k] || 0) + pts; };
   EU.pay = function (st, tid, amount, text) {
