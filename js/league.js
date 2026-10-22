@@ -1189,6 +1189,7 @@
     if (st.ach.seasons >= 3) ACH('veterano', st);
     if (st.ach.seasons >= 10) ACH('leyenda', st);
     });
+    const awards = LG.seasonAwards(st);
     if (MF.EU) MF.EU.endSeason(st);
     const users = [];
     LG.forEachMgr(st, (j) => { const q = per[j]; users[j] = { user: { team: st.userTeam, div: q.uT.div, pos: q.uPos, met: q.met, objective: q.obj.text, name: st.userName }, report: LG.seasonReport(st, q.uT, q.uPos, q.met, q.near, up, relegated1, down2) }; });
@@ -1197,7 +1198,7 @@
     st.history.unshift({
       supes: st.supes && st.supes.winner ? st.supes.winner : null,
       eu: eh ? { ucl: eh.ucl, uel: eh.uel, uecl: eh.uecl, sup: eh.sup, inter: eh.inter, cwc: eh.cwc } : null,
-      report: u0.report, users: LG.isMulti(st) ? users : undefined,
+      report: u0.report, users: LG.isMulti(st) ? users : undefined, awards,
       table1: t1.map((r) => r.id),
       cup: st.cup && st.cup.winner ? [st.cup.winner, st.cup.runnerUp] : null,
       season: st.season, champ1, champ2, relegated: relegated1.slice(), promoted: up.slice(), playoff: P.winner || null, down2: down2.slice(), up3: upPool.slice(),
@@ -1219,6 +1220,57 @@
       if (st.board.conf < 20 && !st.fired) { st.fired = true; ACH('despedido', st); }
       if (st.pendingDivs[3].indexOf(st.userTeam) >= 0) { st.fired = true; st.outOfLeague = true; LG.news(st, 'El ' + uT.name + ' desciende a Primera RFEF, categoría que no se juega en esta versión. Elige un nuevo club.', 'board'); }
     });
+  };
+
+  // ---------- PREMIOS INDIVIDUALES de la temporada (con un pequeño premio en metálico para el club del jugador)
+  LG.AWARD_PRIZE = { balon: 1.5, bota: 1, por: 0.5, def: 0.5, med: 0.5, del: 0.5 };
+  LG.SCORER_PRIZE = { liga: 0.3, segunda: 0.1, copa: 0.2, ucl: 0.3, uel: 0.2, uecl: 0.1, cwc: 0.2 };
+  LG.seasonAwards = function (st) {
+    const w = st.world; const E = st.euro; const out = { scorers: [] };
+    const tot = {};   // goles en todas las competiciones
+    const add = (pid, g) => { tot[pid] = (tot[pid] || 0) + g; };
+    Object.values(w.players).forEach((p) => { if (p.st && p.st.g) add(p.id, p.st.g); });
+    const comps = [];
+    if (st.cup && st.cup.goals) { Object.entries(st.cup.goals).forEach(([pid, g]) => add(+pid, g)); comps.push(['copa', 'Copa del Rey', st.cup.goals]); }
+    if (E && E.season === st.season && E.comps) ['ucl', 'uel', 'uecl'].forEach((k) => { const C = E.comps[k]; if (C && C.goals) { Object.entries(C.goals).forEach(([pid, g]) => add(+pid, g)); comps.push([k, C.name, C.goals]); } });
+    const W = E && E.cwc && E.cwc.season === st.season ? E.cwc : null;
+    if (W && W.goals) { Object.entries(W.goals).forEach(([pid, g]) => add(+pid, g)); comps.push(['cwc', 'Mundial de Clubes', W.goals]); }
+    const entry = (p, extra) => (p ? Object.assign({ pid: p.id, name: p.name, team: p.team }, extra || {}) : null);
+    // máximos goleadores de cada competición
+    [[1, 'liga', 'Primera División'], [2, 'segunda', 'Segunda División']].forEach(([dv, k, nm]) => {
+      const p = Object.values(w.players).filter((q) => w.teams[q.team] && w.teams[q.team].div === dv && q.st && q.st.g > 0).sort((a, b) => b.st.g - a.st.g || a.st.pj - b.st.pj)[0];
+      if (p) out.scorers.push(entry(p, { comp: k, label: nm, g: p.st.g }));
+    });
+    comps.forEach(([k, nm, G]) => {
+      const best = Object.entries(G).filter(([pid]) => w.players[pid]).sort((a, b) => b[1] - a[1])[0];
+      if (best) out.scorers.push(entry(w.players[best[0]], { comp: k, label: nm, g: best[1] }));
+    });
+    // valoración: nota media (si ha jugado bastante) + goles; si no hay datos (clubes extranjeros), su media
+    const score = (p) => (p.st && p.st.ps >= 10 ? p.st.rat / p.st.ps : 6.25 + (p.ovr - 75) * 0.05) + 0.025 * (tot[p.id] || 0) + p.ovr * 0.002;
+    // Balón de Oro: el más destacado del campeón de la Champions (o del Mundial de Clubes, si se juega)
+    const champs = [E && E.season === st.season && E.comps && E.comps.ucl ? E.comps.ucl.winner : null, W ? W.winner : null].filter(Boolean);
+    const cand = Object.values(w.players).filter((p) => champs.indexOf(p.team) >= 0);
+    if (cand.length) {
+      const b = cand.sort((a, c) => score(c) - score(a))[0];
+      const ucl = champs[0] === (E && E.comps && E.comps.ucl ? E.comps.ucl.winner : null) && b.team === champs[0]; const cwc = W && b.team === W.winner;
+      out.balon = entry(b, { why: ucl && cwc ? 'Champions y Mundial de Clubes' : cwc ? 'Mundial de Clubes' : 'Champions League' });
+    }
+    // Bota de Oro: máximo goleador sumando todas las competiciones
+    const bt = Object.entries(tot).filter(([pid]) => w.players[pid]).sort((a, b) => b[1] - a[1])[0];
+    if (bt) out.bota = entry(w.players[bt[0]], { g: bt[1] });
+    // mejores por posición (jugadores de Primera y Segunda con al menos 15 partidos con nota)
+    const pool = Object.values(w.players).filter((p) => w.teams[p.team] && w.teams[p.team].div <= 2 && p.st && p.st.ps >= 15);
+    [['POR', 'por'], ['DEF', 'def'], ['MED', 'med'], ['DEL', 'del']].forEach(([ln, k]) => {
+      const p = pool.filter((q) => q.line === ln).sort((a, b) => score(b) - score(a))[0];
+      if (p) out[k] = entry(p, { avg: Math.round(p.st.rat / p.st.ps * 100) / 100 });
+    });
+    // premios en metálico para los clubes
+    out.scorers.forEach((x) => LG.prize(st, x.team, LG.SCORER_PRIZE[x.comp] || 0.1, 'Premio al máximo goleador de ' + x.label + ' (' + x.name + ')'));
+    const AW = { balon: 'Balón de Oro', bota: 'Bota de Oro', por: 'Mejor portero', def: 'Mejor defensa', med: 'Mejor centrocampista', del: 'Mejor delantero' };
+    Object.keys(AW).forEach((k) => { const x = out[k]; if (!x) return; LG.prize(st, x.team, LG.AWARD_PRIZE[k], AW[k] + ' para ' + x.name);
+      if (k === 'balon' || k === 'bota' || LG.isManaged(st, x.team)) LG.news(st, AW[k] + ' ' + DB.SEASON_LABEL(st.season) + ': ' + x.name + ' (' + LG.team(st, x.team).short + ')' + (x.g ? ', ' + x.g + ' goles' : '') + '.', 'league'); });
+    out.names = AW;
+    return out;
   };
 
   // ---------- balance de la temporada del usuario (para el resumen y la imagen para redes)

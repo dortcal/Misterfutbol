@@ -653,12 +653,28 @@
       (h.pich1 ? '<p class="muted" style="margin:4px 0 0">Pichichi: ' + esc(h.pich1[0]) + ' (' + esc(T(h.pich1[1]).short) + ') con ' + h.pich1[2] + ' goles' + (h.mvp ? ' · Mejor jugador: ' + esc(h.mvp[0]) : '') + '</p>' : '') + '</div>' +
       card +
       '<div class="panel"><h3>Campeones de la temporada</h3><div class="champs">' + champs + '</div></div>' +
+      MGR.awardsHTML(h) +
       '<div class="grid2"><div class="panel" style="padding:6px"><h3 style="margin:4px">Primera · arriba y abajo</h3>' + mini(t1.slice(0, 6).concat(t1.slice(-3)), 1) + '</div><div class="panel" style="padding:6px"><h3 style="margin:4px">Segunda</h3>' + mini(t2.slice(0, 6).concat(t2.slice(-4)), 2) + '</div></div>' +
       MGR.bracketHTML() +
       '<div class="panel"><b>Suben a Primera:</b> ' + h.promoted.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Segunda:</b> ' + h.relegated.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Primera RFEF:</b> ' + h.down2.map((id) => esc(T(id).name)).join(', ') + '<br><b>Suben desde Primera RFEF:</b> ' + h.up3.map((id) => esc(T(id).name)).join(', ') + '</div>' +
       '<nav class="menu" style="max-width:none">' + (anyFired ? '<button class="bar red" data-act="next" autofocus><span class="n">!</span><span class="t">Reunión con la directiva</span></button>' : '<button class="bar gold" data-act="next" autofocus><span class="n">▶</span><span class="t">Empezar temporada ' + DB.SEASON_LABEL(h.season + 1) + '</span></button>') +
       '<button class="bar small grey" data-act="exit"><span class="n">0</span><span class="t">Guardar y salir</span></button></nav></div>',
       { next: () => MGR.seasonNext(), exit: () => { save(); UI.mainMenu(); }, share: (el) => MGR.shareSeason(h, list[+el.dataset.j || 0].report) });
+  };
+  // premios individuales de la temporada
+  MGR.awardsHTML = function (h) {
+    const st = MGR.st; const A = h.awards; if (!A) return '';
+    const card = (ico, title, x, extra) => {
+      if (!x || !T(x.team)) return '';
+      const p = st.world.players[x.pid];
+      const face = p ? '<img src="' + GFX.face(p, T(x.team).kit.home.p, 40) + '" width="34" height="34" alt="" style="border:2px solid #1d2126">' : GFX.badgeImg(T(x.team), 30);
+      return '<div class="champ' + (LG.isManaged(st, x.team) ? ' mine' : '') + '"><span class="ico">' + ico + '</span>' + face + '<span><small>' + esc(title) + '</small><b>' + esc(x.name) + '</b><small>' + esc(T(x.team).short) + (extra ? ' · ' + esc(extra) : '') + '</small></span></div>';
+    };
+    const main = card('🏅', 'Balón de Oro', A.balon, A.balon ? 'campeón de ' + A.balon.why : '') + card('👟', 'Bota de Oro', A.bota, A.bota ? A.bota.g + ' goles en total' : '') +
+      card('🧤', 'Mejor portero', A.por, A.por ? 'nota ' + A.por.avg.toFixed(2) : '') + card('🛡️', 'Mejor defensa', A.def, A.def ? 'nota ' + A.def.avg.toFixed(2) : '') +
+      card('🎯', 'Mejor centrocampista', A.med, A.med ? 'nota ' + A.med.avg.toFixed(2) : '') + card('⚡', 'Mejor delantero', A.del, A.del ? 'nota ' + A.del.avg.toFixed(2) : '');
+    const sc = (A.scorers || []).map((x) => card('⚽', 'Pichichi · ' + x.label, x, x.g + ' goles')).join('');
+    return '<div class="panel"><h3>Premios individuales</h3><div class="champs">' + main + '</div><h3 style="margin-top:10px">Máximos goleadores</h3><div class="champs">' + sc + '</div><p class="muted" style="margin:6px 0 0">Los clubes de los premiados reciben una pequeña cantidad: ' + U.money(LG.AWARD_PRIZE.balon) + ' por el Balón de Oro, ' + U.money(LG.AWARD_PRIZE.bota) + ' por la Bota de Oro, ' + U.money(LG.AWARD_PRIZE.por) + ' por cada mejor de su puesto y entre ' + U.money(0.1) + ' y ' + U.money(0.3) + ' por cada máximo goleador.</p></div>';
   };
   // tras el resumen: primero los mánagers destituidos eligen club y después arranca la nueva temporada
   MGR.seasonNext = function () {
