@@ -202,13 +202,13 @@
 
   MGR.offersHTML = function (offers) {
     const st = MGR.st;
-    return '<div class="tbl-wrap"><table class="tbl"><tbody>' + offers.map((o) => { const p = st.world.players[o.pid]; return '<tr><td>' + GFX.badgeImg(T(o.from), 20) + ' ' + esc(T(o.from).short) + '</td><td>' + esc(p.name) + ' ' + UI.ovr(p.ovr) + '</td><td class="num"><b>' + U.money(o.amount) + '</b> <span class="muted hide-sm">(valor ' + U.money(p.value) + ')</span></td><td><button class="btn" data-act="oacc" data-id="' + o.id + '">Aceptar</button> <button class="btn alt" data-act="orej" data-id="' + o.id + '">Rechazar</button></td></tr>'; }).join('') + '</tbody></table></div>';
+    return '<div class="tbl-wrap"><table class="tbl"><tbody>' + offers.map((o) => { const p = st.world.players[o.pid]; return '<tr><td>' + GFX.badgeImg(T(o.from), 20) + ' ' + esc(T(o.from).short) + (o.human ? ' <span class="tag t-xi">👤 ' + esc(o.by) + '</span>' : '') + '</td><td>' + esc(p.name) + ' ' + UI.ovr(p.ovr) + '</td><td class="num"><b>' + U.money(o.amount) + '</b> <span class="muted hide-sm">(valor ' + U.money(p.value) + ')</span></td><td><button class="btn" data-act="oacc" data-id="' + o.id + '">Aceptar</button> <button class="btn alt" data-act="orej" data-id="' + o.id + '">Rechazar</button></td></tr>'; }).join('') + '</tbody></table></div>';
   };
   MGR.offerActs = function (refresh) {
     const st = MGR.st;
     return {
       oacc: (el) => { const r = LG.acceptOffer(st, el.dataset.id); UI.toast(r.msg); save(); refresh(); },
-      orej: (el) => { st.offers = st.offers.filter((o) => o.id !== el.dataset.id); save(); refresh(); },
+      orej: (el) => { LG.rejectOffer(st, el.dataset.id); save(); refresh(); },
     };
   };
 
@@ -319,12 +319,14 @@
       acts = Object.assign(MGR.offerActs(() => { UI.closeModal(); refresh(); }), { sell: () => { const r = LG.listForSale(st, pid); UI.toast(r.msg); save(); MGR.playerModal(pid, refresh); } });
     } else {
       const ask = LG.askingPrice(st, p); const fx = T(p.team).div >= 4;
-      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">' + (fx ? 'Juega en el ' + esc(T(p.team).name) + ' (' + esc(T(p.team).country || '') + '). Su club pide en torno a ' : 'El ' + esc(T(p.team).short) + ' valora al jugador en torno a ') + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.' + (fx ? ' Las estrellas solo aceptan proyectos a su altura.' : '') + '</p><div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">El mercado está cerrado desde la jornada 30 hasta la próxima temporada.</p>') + '</div>';
+      const hum = LG.isManaged(st, p.team); const rg = hum ? LG.humanRange(p) : null;
+      actions = '<div class="panel"><h3>Hacer una oferta</h3>' + (win ? '<p class="muted" style="margin-top:0">' + (hum ? 'Lo dirige ' + esc(LG.mgrData(st, p.team).userName) + ' (otro mánager). Entre mánagers la oferta debe estar entre ' + U.money(rg[0]) + ' y ' + U.money(rg[1]) + ' (del 50% al 150% de su valor real, ' + U.money(p.value) + '). La verá en su turno. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.</p>' + '<!--' : '') + (fx ? 'Juega en el ' + esc(T(p.team).name) + ' (' + esc(T(p.team).country || '') + '). Su club pide en torno a ' : 'El ' + esc(T(p.team).short) + ' valora al jugador en torno a ') + U.money(ask) + '. Tu presupuesto: ' + U.money(T(st.userTeam).budget) + '.' + (fx ? ' Las estrellas solo aceptan proyectos a su altura.' : '') + '</p>' + (hum ? '-->' : '') + '<div class="row"><label class="f" style="flex:1">Importe (millones de €)<input type="number" id="offer" min="0" step="0.1" value="' + Math.max(0.1, Math.round(p.value * 10) / 10) + '"></label><button class="btn goldb" data-act="offer">Enviar oferta</button></div><div id="offerMsg"></div>' : '<p class="muted" style="margin:0">El mercado está cerrado desde la jornada 30 hasta la próxima temporada.</p>') + '</div>';
       acts = {
         offer: () => {
           const v = parseFloat(document.getElementById('offer').value); if (!(v > 0)) { UI.toast('Introduce un importe válido.'); return; }
           const r = LG.makeOffer(st, pid, v); const box = document.getElementById('offerMsg');
           if (r.ok) { save(); UI.closeModal(); UI.toast(r.msg); A.sfxPlay('win'); refresh(); return; }
+          if (r.sent) { save(); UI.closeModal(); UI.toast(r.msg); refresh(); return; }
           box.innerHTML = '<p style="margin:8px 0 0;font-weight:700">' + esc(r.msg) + '</p>' + (r.counter ? '<button class="btn" data-act="counter" data-v="' + r.counter + '" style="margin-top:6px">Aceptar ' + U.money(r.counter) + '</button>' : '');
         },
         counter: (el) => { const r = LG.makeOffer(st, pid, +el.dataset.v); UI.toast(r.msg); if (r.ok) { save(); UI.closeModal(); refresh(); } },

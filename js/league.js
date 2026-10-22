@@ -497,7 +497,7 @@
     if (st.day >= LG.MARKET_CLOSE - 1) { /* mercado cerrado */ }
     else if (st.day === 0) { if (!LG.firstSeason(st)) LG.aiTransfers(st, R, 10); LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
     else { if (R() < 0.55 && !LG.firstSeason(st)) LG.aiTransfers(st, R, 1); if (st.day % 3 === 0) LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
-    LG.forEachMgr(st, () => { if (st.day >= LG.MARKET_CLOSE - 1) st.offers = []; st.offers = st.offers.filter((o) => o.day >= st.day - 1); });
+    LG.forEachMgr(st, () => { if (st.day >= LG.MARKET_CLOSE - 1) st.offers = []; st.offers = st.offers.filter((o) => o.day >= st.day - 1 || (o.human && o.day >= st.day - 3)); });
     st.day++;
     // fin de liga regular de Segunda → playoff
     if (st.day === 42 && !st.playoff) LG.setupPlayoff(st);
@@ -692,7 +692,7 @@
     const w = st.world; const p = w.players[pid]; const me = LG.team(st, st.userTeam);
     if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado desde la jornada 30 hasta la próxima temporada.' };
     if (!p || p.team === st.userTeam) return { ok: false, msg: 'Jugador no disponible.' };
-    if (LG.isManaged(st, p.team)) return { ok: false, msg: 'El ' + LG.team(st, p.team).short + ' lo dirige el otro mánager: no se puede negociar con él.' };
+    if (LG.isManaged(st, p.team)) return LG.humanOffer(st, p, amount);
     const sc = st.squadChg && st.squadChg[p.team];
     if (sc && sc.out >= LG.MAX_CHANGES && LG.team(st, p.team).div <= 2) return { ok: false, msg: 'El ' + LG.team(st, p.team).short + ' ya ha cerrado su plantilla: no venderá más jugadores esta temporada.' };
     if (p.retiring) return { ok: false, msg: p.name + ' ha anunciado su retirada al final de la temporada y no puede ser traspasado.' };
@@ -717,6 +717,24 @@
     return { ok: false, msg: 'Oferta rechazada. El ' + seller.short + ' la considera insuficiente.' };
   };
 
+  // ---------- traspasos entre los dos mánagers humanos (entre el 50% y el 150% del valor real)
+  LG.HUMAN_MIN = 0.5; LG.HUMAN_MAX = 1.5;
+  LG.humanRange = (p) => [Math.ceil(p.value * LG.HUMAN_MIN * 10) / 10, Math.floor(p.value * LG.HUMAN_MAX * 10) / 10];
+  LG.humanOffer = function (st, p, amount) {
+    const w = st.world; const me = LG.team(st, st.userTeam); const seller = LG.team(st, p.team); const M = LG.mgrData(st, p.team);
+    const [lo, hi] = LG.humanRange(p); amount = Math.round(amount * 10) / 10;
+    if (p.retiring) return { ok: false, msg: p.name + ' ha anunciado su retirada al final de la temporada y no puede ser traspasado.' };
+    if (me.parent) return { ok: false, msg: 'Los filiales no fichan: solo pueden subir jugadores de su cantera.' };
+    if (amount < lo || amount > hi) return { ok: false, msg: 'Entre mánagers la oferta debe estar entre el 50% y el 150% del valor real de ' + p.name + ': de ' + U.money(lo) + ' a ' + U.money(hi) + '.' };
+    if (amount > me.budget) return { ok: false, msg: 'No tienes presupuesto suficiente (' + U.money(me.budget) + ').' };
+    if (DB.teamPlayers(w, st.userTeam).length >= 30) return { ok: false, msg: 'Tu plantilla ya tiene 30 jugadores. Vende antes de fichar.' };
+    if (DB.teamPlayers(w, p.team).length <= 18) return { ok: false, msg: 'El ' + seller.short + ' no puede quedarse con menos de 18 jugadores.' };
+    M.offers = (M.offers || []).filter((o) => !(o.human && o.pid === p.id && o.from === st.userTeam));
+    M.offers.push({ id: 'h' + st.season + '_' + st.day + '_' + p.id + '_' + st.userTeam, pid: p.id, from: st.userTeam, amount, day: st.day, human: true, by: st.userName });
+    LG.news(st, 'Oferta entre mánagers: ' + st.userName + ' (' + me.short + ') ofrece ' + U.money(amount) + ' por ' + p.name + ' (' + seller.short + ').', 'offer');
+    return { ok: false, sent: true, msg: 'Oferta enviada a ' + M.userName + '. La verá en su turno y decidirá si la acepta.' };
+  };
+
   LG.transfer = function (st, p, toId, fee) {
     // las consecuencias para un mánager (finanzas, alineación, logros) se apuntan en sus datos
     if (LG.isMulti(st) && p.team !== st.userTeam && toId !== st.userTeam) { const own = [p.team, toId].find((x) => LG.isManaged(st, x)); if (own) return LG.own(st, own, () => LG.transfer(st, p, toId, fee)); }
@@ -730,13 +748,17 @@
     if (p.fx) { delete p.fx; st.fxOut = st.fxOut || {}; st.fxOut[p.id] = 1; }   // deja de ser plantilla de referencia
     const used = new Set(DB.teamPlayers(w, toId).filter((q) => q !== p).map((q) => q.num));
     if (used.has(p.num)) { let n = p.num; for (let k = 1; k < 99; k++) if (!used.has(k) && k > 12) { n = k; break; } p.num = n; }
-    if (oldTeam === st.userTeam || toId === st.userTeam) {
+    // apuntes de cada mánager implicado (alineación, finanzas y logros)
+    const book = () => {
+      if (oldTeam !== st.userTeam && toId !== st.userTeam) return;
       if (st.lineup) { st.lineup.xi = st.lineup.xi.map((x) => (x === p.id && oldTeam === st.userTeam ? null : x)); st.lineup.bench = (st.lineup.bench || []).filter((x) => x !== p.id); }
       st.finance.log.unshift({ s: st.season, d: st.day, inc: oldTeam === st.userTeam ? fee : 0, exp: toId === st.userTeam ? fee : 0, items: [[(toId === st.userTeam ? 'Fichaje de ' : 'Venta de ') + p.name, toId === st.userTeam ? -fee : fee]], bal: w.teams[st.userTeam].budget });
-    }
-    if (toId === st.userTeam) { ACH('fichaje', st); if (p.ovr >= 85) ACH('fichaje_estrella', st); if (from.div >= 4) ACH('fichaje_extranjero', st); }
-    if (oldTeam === st.userTeam && fee >= 30) ACH('gran_venta', st);
-    if (fee >= 8 || p.ovr >= 78 || oldTeam === st.userTeam || toId === st.userTeam) LG.news(st, 'Mercado: ' + p.name + ' (' + from.short + ') ficha por el ' + to.short + ' por ' + U.money(fee) + '.', 'market');
+      if (toId === st.userTeam) { ACH('fichaje', st); if (p.ovr >= 85) ACH('fichaje_estrella', st); if (from.div >= 4) ACH('fichaje_extranjero', st); }
+      if (oldTeam === st.userTeam && fee >= 30) ACH('gran_venta', st);
+    };
+    book();
+    [oldTeam, toId].forEach((x) => { if (x !== st.userTeam && LG.isManaged(st, x)) LG.own(st, x, book); });
+    if (fee >= 8 || p.ovr >= 78 || LG.isManaged(st, oldTeam) || LG.isManaged(st, toId)) LG.news(st, 'Mercado: ' + p.name + ' (' + from.short + ') ficha por el ' + to.short + ' por ' + U.money(fee) + '.', 'market');
   };
 
   LG.aiTransfers = function (st, R, n) {
@@ -785,11 +807,19 @@
     if (p.retiring) return { ok: false, msg: p.name + ' ha anunciado su retirada y no puede ser traspasado.' };
     if (DB.teamPlayers(st.world, st.userTeam).length <= 18) return { ok: false, msg: 'No puedes quedarte con menos de 18 jugadores.' };
     if (st.world.teams[o.from].budget < o.amount) return { ok: false, msg: 'El comprador ya no tiene dinero suficiente.' };
+    if (o.human) {
+      if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado.' };
+      if (DB.teamPlayers(st.world, o.from).length >= 30) return { ok: false, msg: 'La plantilla del ' + st.world.teams[o.from].short + ' ya está completa (30 jugadores).' };
+    }
     LG.transfer(st, p, o.from, o.amount);
     st.offers = st.offers.filter((x) => x.pid !== o.pid);
     return { ok: true, msg: p.name + ' vendido al ' + st.world.teams[o.from].short + ' por ' + U.money(o.amount) + '.' };
   };
 
+  LG.rejectOffer = function (st, oid) {
+    const o = st.offers.find((x) => x.id === oid); st.offers = st.offers.filter((x) => x.id !== oid);
+    if (o && o.human && st.world.players[o.pid]) LG.news(st, st.userName + ' rechaza la oferta de ' + o.by + ' (' + U.money(o.amount) + ') por ' + st.world.players[o.pid].name + '.', 'offer');
+  };
   LG.listForSale = function (st, pid) {
     const w = st.world; const p = w.players[pid]; const R = LG.rng(st);
     if (p.retiring) return { ok: false, msg: p.name + ' se retira al final de la temporada: nadie puede ficharlo.' };
