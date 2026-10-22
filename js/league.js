@@ -15,7 +15,9 @@
   // Premios por títulos (M€), según la importancia de la competición
   LG.TITLE_PRIZE = { liga: 15, segunda: 3, playoff: 2, copa: 6, supes: 8, supes_final: 5, supes_semi: 3 };
   LG.MARKET_CLOSE = 29;
-  LG.MAX_CHANGES = 3;   // equipos de la IA: como mucho 3 caras nuevas (y 3 salidas) de una temporada a otra   // el mercado se cierra desde la jornada 30 hasta la temporada siguiente
+  LG.MAX_CHANGES = 3;
+  // primera temporada: los equipos de la IA no se fichan entre ellos (solo operan con los mánagers humanos)
+  LG.firstSeason = (st) => st.season === (st.firstSeason || 2026);   // equipos de la IA: como mucho 3 caras nuevas (y 3 salidas) de una temporada a otra   // el mercado se cierra desde la jornada 30 hasta la temporada siguiente
   const ACH = (id, st) => { if (MF.ACH && (!st || !st.noAch)) MF.ACH.unlock(id); };
   LG.ach = ACH;
 
@@ -57,7 +59,7 @@
     const div = { 1: [], 2: [], 3: [], 4: [], 5: [] };
     Object.values(world.teams).forEach((t) => div[t.div].push(t.id));
     const st = {
-      v: 2, seed, rngState: seed ^ 0x9e3779b9, season: 2026, userTeam: opts.team, userName: opts.name || 'Míster',
+      v: 2, firstSeason: 2026, seed, rngState: seed ^ 0x9e3779b9, season: 2026, userTeam: opts.team, userName: opts.name || 'Míster',
       difficulty: opts.difficulty || 1, world, div, comp: {}, day: 0, playoff: null,
       lineup: null, tactics: null, training: 'equilibrado', board: null, news: [], history: [], finance: { log: [] },
       offers: [], youthUsed: false, fired: false, seasonOver: false, created: Date.now(), lastUser: null, mvpLog: [],
@@ -493,8 +495,8 @@
     // mercado abierto toda la temporada: la IA ficha poco a poco y llegan ofertas cada pocas jornadas
     if (st.day === LG.MARKET_CLOSE - 1) LG.news(st, 'Se cierra el mercado de fichajes hasta la próxima temporada.', 'market');
     if (st.day >= LG.MARKET_CLOSE - 1) { /* mercado cerrado */ }
-    else if (st.day === 0) { LG.aiTransfers(st, R, 10); LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
-    else { if (R() < 0.55) LG.aiTransfers(st, R, 1); if (st.day % 3 === 0) LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
+    else if (st.day === 0) { if (!LG.firstSeason(st)) LG.aiTransfers(st, R, 10); LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
+    else { if (R() < 0.55 && !LG.firstSeason(st)) LG.aiTransfers(st, R, 1); if (st.day % 3 === 0) LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
     LG.forEachMgr(st, () => { if (st.day >= LG.MARKET_CLOSE - 1) st.offers = []; st.offers = st.offers.filter((o) => o.day >= st.day - 1); });
     st.day++;
     // fin de liga regular de Segunda → playoff
@@ -1276,10 +1278,24 @@
   };
 
   // Aceptar oferta de otro club tras un despido
+  LG.JOB_TOP = 6;   // los 6 primeros clasificados nunca hacen ofertas a un mánager destituido (partida de 2 jugadores)
   LG.jobOffers = function (st) {
     const R = U.rng(U.hash(st.season + 'jobs' + st.userTeam));
     const t = LG.team(st, st.userTeam);
     const D = st.seasonOver && st.pendingDivs ? st.pendingDivs : st.div;
+    // partida de dos jugadores: ofertas de clubes de la liga del otro jugador, nunca de los mejor clasificados
+    if (LG.isMulti(st)) {
+      const j = st.mgrs.findIndex((m, i) => i !== st.cur && !(m.fired && m.outOfLeague));
+      const other = j >= 0 ? LG.mgrTeam(st, j) : null;
+      const dv = other ? [1, 2].find((d) => D[d].indexOf(other) >= 0) : null;
+      if (dv) {
+        const played = st.seasonOver || st.day > 0;
+        const byStr = D[dv].slice().sort((a, b) => DB.teamStrength(st.world, b) - DB.teamStrength(st.world, a));
+        const rank = (id) => (played && LG.position(st, id) ? LG.position(st, id) : byStr.indexOf(id) + 1);
+        let mp = D[dv].filter((id) => !LG.isManaged(st, id) && id !== st.userTeam && !LG.team(st, id).parent && rank(id) > LG.JOB_TOP);
+        if (mp.length >= 3) { R.shuffle(mp); return mp.slice(0, 3); }
+      }
+    }
     let pool = D[1].concat(D[2]).filter((id) => !LG.isManaged(st, id) && DB.teamStrength(st.world, id) < DB.teamStrength(st.world, st.userTeam) + 1);
     if (pool.length < 3) pool = D[2].filter((id) => !LG.isManaged(st, id));
     R.shuffle(pool);
