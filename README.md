@@ -29,6 +29,7 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **34 logros** desbloqueables (en el campo, mercado, títulos y carrera), guardados en el navegador para todas las partidas.
   - Clasificación con desempate por enfrentamiento directo, calendario, estadísticas (Pichichi, Zamora, asistencias, tarjetas, nota media).
   - **Ascensos y descensos**: bajan los 3 últimos de Primera; suben los 2 primeros de Segunda y el ganador del **playoff** (3º-6º, eliminatorias a doble partido; con empate global pasa el mejor clasificado). Los 4 últimos de Segunda bajan a Primera RFEF y suben 4 de la bolsa. Los filiales no pueden coincidir en categoría con su primer equipo.
+  - **Resumen de fin de temporada**: todos los campeones del año (Liga, Segunda, playoff, Copa, Supercopas, Champions, Europa League, Conference, Intercontinental y Mundial), tu balance, una nota de 1 a 5 estrellas con una frase divertida y una imagen de 1080 × 1350 para compartir en redes.
   - Temporadas sucesivas: los jugadores envejecen, progresan o declinan y se retiran; se generan canteranos.
   - Guardado automático en el navegador (3 ranuras) y exportación/importación de partidas.
 

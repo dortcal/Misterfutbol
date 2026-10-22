@@ -405,3 +405,14 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 @media (max-width: 760px) { .lineup { grid-template-columns: minmax(0, 1fr); } .lineup > * { min-width: 0; } }
 .tbl-wrap { overflow-x: auto; }
 @media (max-width: 600px) { .tbl.sq td:nth-child(3) { white-space: normal; } .alt-pos { font-size: 8.5px; padding: 0 2px; } }
+/* resumen de la temporada */
+.season-card .sc-head { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.sc-stars { font-size: 34px; line-height: 1; color: #e0a800; text-shadow: 1px 1px 0 #7a5400; letter-spacing: 2px; }
+.sc-stars span { color: #b9bfc4; text-shadow: none; }
+.sc-phrase { margin: 4px 0 0; font-size: 18px; font-style: italic; font-weight: 700; }
+.champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.champ { display: flex; gap: 8px; align-items: center; padding: 6px 8px; background: #e9ecef; border: 2px solid #9aa2a8; }
+.champ.mine { background: linear-gradient(180deg, var(--gold-1), #f7dc86); border-color: #1d2126; }
+.champ .ico { font-size: 22px; }
+.champ small { display: block; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: .04em; }
+.champ b { display: block; font-size: 15px; line-height: 1.15; }

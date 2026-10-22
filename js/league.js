@@ -1024,7 +1024,11 @@
     if (st.ach.seasons >= 3) ACH('veterano', st);
     if (st.ach.seasons >= 10) ACH('leyenda', st);
     if (MF.EU) MF.EU.endSeason(st);
+    const eh = st.euro && st.euro.history && st.euro.history[0] && st.euro.history[0].season === st.season ? st.euro.history[0] : null;
     st.history.unshift({
+      supes: st.supes && st.supes.winner ? st.supes.winner : null,
+      eu: eh ? { ucl: eh.ucl, uel: eh.uel, uecl: eh.uecl, sup: eh.sup, inter: eh.inter, cwc: eh.cwc } : null,
+      report: LG.seasonReport(st, uT, uPos, met, near, up, relegated1, down2),
       table1: t1.map((r) => r.id),
       cup: st.cup && st.cup.winner ? [st.cup.winner, st.cup.runnerUp] : null,
       season: st.season, champ1, champ2, relegated: relegated1.slice(), promoted: up.slice(), playoff: P.winner || null, down2: down2.slice(), up3: upPool.slice(),
@@ -1043,6 +1047,59 @@
     LG.news(st, 'Fin de la temporada ' + DB.SEASON_LABEL(st.season) + '. Campeón de Liga: ' + LG.team(st, champ1).name + '.', 'league');
     if (st.board.conf < 20) { st.fired = true; ACH('despedido', st); }
     if (st.pendingDivs[3].indexOf(st.userTeam) >= 0) { st.fired = true; st.outOfLeague = true; LG.news(st, 'El ' + uT.name + ' desciende a Primera RFEF, categoría que no se juega en esta versión. Elige un nuevo club.', 'board'); }
+  };
+
+  // ---------- balance de la temporada del usuario (para el resumen y la imagen para redes)
+  LG.seasonReport = function (st, uT, uPos, met, near, up, relegated1, down2) {
+    const w = st.world; const u = st.userTeam;
+    const row = uT.div <= 2 ? LG.table(st, uT.div).find((r) => r.id === u) : null;
+    // Copa del Rey
+    let cup = '—'; const C = st.cup;
+    if (C) {
+      if (C.winner === u) cup = 'Campeón';
+      else if (C.teams.indexOf(u) >= 0) { let last = null; C.rounds.forEach((rd) => { if (rd.ties.some((t) => t.h === u || t.a === u)) last = rd; }); if (last) cup = (C.runnerUp === u ? 'Finalista' : 'Eliminado en ' + last.label.toLowerCase()); }
+      else cup = 'No participa';
+    }
+    // Europa
+    let euro = null;
+    if (MF.EU && st.euro && st.euro.comps) {
+      const codes = MF.EU.compsOf(st, u);
+      if (codes.length) {
+        const c = codes[0]; const E = st.euro.comps[c]; let txt;
+        if (E.winner === u) txt = 'Campeón'; else if (E.runnerUp === u) txt = 'Finalista';
+        else { let last = null; E.ko.forEach((K) => { if (K.ties.some((t) => t.a === u || t.b === u)) last = K; }); const tab = MF.EU.table(st, E); const pos = (tab.find((r) => r.id === u) || {}).pos; txt = last ? 'Eliminado en ' + last.label.toLowerCase() : 'Fase de liga (' + pos + 'º)'; }
+        euro = { comp: E.name, txt };
+      }
+    }
+    const sq = DB.teamPlayers(w, u);
+    const scorer = sq.slice().sort((a, b) => b.st.g - a.st.g)[0];
+    const star = sq.filter((p) => p.st.ps >= 8).sort((a, b) => b.st.rat / b.st.ps - a.st.rat / a.st.ps)[0];
+    const titles = (st.trophies || []).filter((x) => x.season === st.season && x.team === u).map((x) => x.comp);
+    const promoted = up.indexOf(u) >= 0, relegated = relegated1.indexOf(u) >= 0 || down2.indexOf(u) >= 0;
+    // valoración de 1 a 5 estrellas
+    const gap = uPos ? uPos - st.board.objective.maxPos : 99;
+    let sc = met ? 3 : gap <= 2 ? 2.2 : gap <= 6 ? 1.6 : 1;
+    if (euro && /Campeón|Finalista|semifinal|cuartos/i.test(euro.txt)) sc += 0.5;
+    if (/Campeón|Finalista|semifinal/i.test(cup)) sc += 0.5;
+    if (uPos && met && st.board.objective.maxPos - uPos >= 3) sc += 1;
+    const big = { liga: 2, ucl: 2, copa: 1, uel: 1, mundial: 2, segunda: 1, uecl: 1, supes: 0.5, supercopa: 0.5, inter: 0.5, playoff: 0.5 };
+    titles.forEach((k) => { sc += big[k] || 0.5; });
+    if (promoted) sc += 1; if (relegated) sc = Math.min(sc, 1); if (st.fired) sc = Math.min(sc, 1);
+    const stars = U.clamp(Math.round(sc), 1, 5);
+    const pool = LG.RATING_TEXT[stars]; const phrase = pool[U.hash(u + st.season + (st.seed || 0)) % pool.length];
+    return {
+      team: u, div: uT.div, pos: uPos, objective: st.board.objective.text, met, stars, phrase,
+      rec: row ? [row.g, row.e, row.p, row.gf, row.gc, row.pts] : null, cup, euro, titles, promoted, relegated,
+      scorer: scorer && scorer.st.g ? [scorer.name, scorer.st.g] : null, star: star ? [star.name, Math.round(star.st.rat / star.st.ps * 100) / 100] : null,
+      manager: st.userName, conf: Math.round(st.board.conf),
+    };
+  };
+  LG.RATING_TEXT = {
+    1: ['Temporada para olvidar: hasta el utillero pidió el traslado', 'El presidente ya busca tu foto para el álbum de ex entrenadores', 'Ni el VAR encontró algo bueno', 'Año de travesía por el desierto sin cantimplora', 'La afición pidió el reembolso del abono', 'Más pinchazos que una bici de montaña', 'El equipo jugó con el freno de mano puesto', 'Para enmarcar… en la sala de los horrores', 'Hasta la mascota se cambió de club', 'Ni rezándole al patrón se arreglaba esto', 'Una temporada de las de apagar la tele', 'Los rivales te mandaron flores de agradecimiento'],
+    2: ['Aprobado raspado y con faltas de ortografía', 'Ni fu ni fa: temporada de café descafeinado', 'Hubo luces, pero el plomo saltó demasiadas veces', 'Se intentó, que no es poco', 'El equipo prometía más que un anuncio de colonia', 'Entre el quiero y el no puedo', 'Una temporada de ir tirando con muletas', 'Mucho calentamiento y poco partido', 'Más dudas que certezas en el banquillo', 'Toca hacer autocrítica y mucha pizarra', 'Temporada de «el año que viene, sí»', 'Hay que pasar por el taller de chapa y pintura'],
+    3: ['Objetivo cumplido sin despeinarse', 'Temporada de notable bajo, la directiva respira', 'Cumpliste, que en el fútbol ya es mucho', 'Ni para tirar cohetes ni para esconderse', 'Sólido como un central de los de antes', 'Trabajo de obrero bien hecho', 'Sin fuegos artificiales, pero con la luz encendida', 'El míster se ha ganado la renovación', 'Temporada de pan con tomate: sencilla y rica', 'Ordenados, serios y cumplidores', 'La afición sale del estadio silbando una canción alegre', 'Se cumplió el guion sin sobresaltos'],
+    4: ['Temporada de sobresaliente, la ciudad está en la calle', 'El equipo jugó de memoria y con el pañuelo de seda', '¡Qué manera de disfrutar! Temporada de matrícula', 'La directiva ya prepara una estatua… pequeñita', 'Partidazos a pares y la grada cantando tu nombre', 'Hoy tu pizarra cotiza en bolsa', 'Has convertido el estadio en un fortín', 'La prensa te llama «el nuevo gurú de los banquillos»', 'Temporada para guardar en DVD y en la memoria', 'Juego bonito y resultados: el combo perfecto', 'Hasta los rivales aplaudieron tu fútbol', 'El club vive un sueño del que nadie quiere despertar'],
+    5: ['¡LEYENDA! Esta temporada se estudiará en las escuelas de entrenadores', 'Temporada histórica: bautizan una calle con tu nombre', 'Galáctico, mítico, irrepetible', '¡Pentakill futbolero! No se recuerda nada igual', 'La vitrina necesita una ampliación urgente', 'Ni en la Play se gana tanto', 'Tu nombre ya brilla junto a los más grandes del banquillo', 'Temporada de cine: Oscar al mejor míster', 'El fútbol se rinde a tus pies', 'Ahora mismo eres trending topic mundial', 'Desfile en autobús descapotable asegurado', 'Que alguien llame al museo del club: hay que hacer sitio'],
   };
 
   // ---------- nueva temporada

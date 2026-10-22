@@ -548,20 +548,118 @@
     const st = MGR.st; const h = st.history[0]; if (!h) return MGR.hub();
     const t1 = LG.table(st, 1), t2 = LG.table(st, 2);
     const mini = (rows, dv) => '<table class="tbl"><tbody>' + rows.map((r) => '<tr class="' + (r.id === st.userTeam ? 'me' : '') + '"><td>' + r.pos + '</td><td>' + GFX.badgeImg(T(r.id), 18) + ' ' + esc(T(r.id).short) + '</td><td class="num"><b>' + r.pts + '</b></td><td>' + (dv === 1 && r.pos >= 18 ? '<span class="tag t-inj">DESCIENDE</span>' : '') + (dv === 2 && h.promoted.indexOf(r.id) >= 0 ? '<span class="tag t-xi">ASCIENDE</span>' : '') + (dv === 2 && h.down2.indexOf(r.id) >= 0 ? '<span class="tag t-inj">A 1ª RFEF</span>' : '') + '</td></tr>').join('') + '</tbody></table>';
-    const u = h.user;
+    const u = h.user; const R = h.report;
     const verdict = u.met ? '¡Objetivo cumplido! La directiva está satisfecha con tu trabajo.' : 'No has cumplido el objetivo (' + esc(u.objective) + ').';
     A.sfxPlay(u.met ? 'win' : 'lose');
+    // todos los campeones de la temporada
+    const champ = (ico, comp, id, extra) => (id && T(id) ? '<div class="champ' + (id === st.userTeam ? ' mine' : '') + '"><span class="ico">' + ico + '</span>' + GFX.badgeImg(T(id), 30) + '<span><small>' + esc(comp) + '</small><b>' + esc(T(id).name) + '</b>' + (extra ? '<small>' + esc(extra) + '</small>' : '') + '</span></div>' : '');
+    const e = h.eu || {};
+    const champs = [
+      champ('🏆', 'Primera División', h.champ1), champ('🥇', 'Segunda División', h.champ2), champ('🎢', 'Playoff de ascenso', h.playoff),
+      champ('🏅', 'Copa del Rey', h.cup && h.cup[0], h.cup ? 'final ante el ' + T(h.cup[1]).short : ''), champ('🎖️', 'Supercopa de España', h.supes),
+      champ('🌟', 'Champions League', e.ucl), champ('⭐', 'Europa League', e.uel), champ('💠', 'Conference League', e.uecl),
+      champ('🛡️', 'Supercopa de Europa', e.sup), champ('🌐', 'Copa Intercontinental', e.inter), champ('🌍', 'Mundial de Clubes', e.cwc),
+    ].join('');
+    const card = R ? '<div class="panel season-card"><div class="sc-head">' + GFX.badgeImg(T(R.team), 64) + '<div><h3 style="margin:0">Tu temporada</h3><div class="sc-stars">' + '★'.repeat(R.stars) + '<span>' + '★'.repeat(5 - R.stars) + '</span></div><p class="sc-phrase">«' + esc(R.phrase) + '»</p></div></div>' +
+      '<div class="kv"><b>Liga</b><span>' + (R.pos ? R.pos + 'º en ' + (R.div === 1 ? 'Primera' : 'Segunda') : '—') + (R.rec ? ' · ' + R.rec[0] + 'V ' + R.rec[1] + 'E ' + R.rec[2] + 'D · ' + R.rec[3] + '-' + R.rec[4] + ' · ' + R.rec[5] + ' pts' : '') + '</span><b>Objetivo</b><span>' + esc(R.objective) + (R.met ? ' ✓' : ' ✗') + '</span><b>Copa del Rey</b><span>' + esc(R.cup) + '</span>' + (R.euro ? '<b>' + esc(R.euro.comp) + '</b><span>' + esc(R.euro.txt) + '</span>' : '') +
+      (R.scorer ? '<b>Máximo goleador</b><span>' + esc(R.scorer[0]) + ' (' + R.scorer[1] + ')</span>' : '') + (R.star ? '<b>Mejor jugador</b><span>' + esc(R.star[0]) + ' (' + R.star[1].toFixed(2) + ')</span>' : '') +
+      (R.titles.length ? '<b>Títulos</b><span>' + R.titles.map((k) => (MGR.TROPHY[k] || ['🏆', k])[0] + ' ' + (MGR.TROPHY[k] || ['', k])[1]).join(' · ') + '</span>' : '') + '</div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn goldb" data-act="share">📸 Crear imagen para redes sociales</button></div></div>' : '';
     UI.show(UI.title('Fin de temporada ' + DB.SEASON_LABEL(h.season)) + '<div class="wrap">' +
       '<div class="panel center"><div class="big">' + GFX.badgeImg(T(h.champ1), 48) + ' ' + esc(T(h.champ1).name) + ', campeón de Liga</div><p style="margin:6px 0 0">' + esc(T(u.team).short) + ' termina ' + (u.pos ? u.pos + 'º en ' + (u.div === 1 ? 'Primera' : 'Segunda') : 'la temporada') + '. ' + verdict + '</p>' +
-      (h.cup ? '<p style="margin:4px 0 0">🏆 Copa del Rey: <b>' + esc(T(h.cup[0]).name) + '</b> (final ante el ' + esc(T(h.cup[1]).short) + ')</p>' : '') +
-      (st.euro && st.euro.history[0] && st.euro.history[0].season === h.season ? (function () { const e = st.euro.history[0]; return '<p style="margin:4px 0 0">🌟 Champions: <b>' + esc(T(e.ucl) ? T(e.ucl).name : '—') + '</b> · ⭐ Europa League: <b>' + esc(T(e.uel) ? T(e.uel).short : '—') + '</b> · 💠 Conference: <b>' + esc(T(e.uecl) ? T(e.uecl).short : '—') + '</b></p>'; })() : '') +
       (h.pich1 ? '<p class="muted" style="margin:4px 0 0">Pichichi: ' + esc(h.pich1[0]) + ' (' + esc(T(h.pich1[1]).short) + ') con ' + h.pich1[2] + ' goles' + (h.mvp ? ' · Mejor jugador: ' + esc(h.mvp[0]) : '') + '</p>' : '') + '</div>' +
+      card +
+      '<div class="panel"><h3>Campeones de la temporada</h3><div class="champs">' + champs + '</div></div>' +
       '<div class="grid2"><div class="panel" style="padding:6px"><h3 style="margin:4px">Primera · arriba y abajo</h3>' + mini(t1.slice(0, 6).concat(t1.slice(-3)), 1) + '</div><div class="panel" style="padding:6px"><h3 style="margin:4px">Segunda</h3>' + mini(t2.slice(0, 6).concat(t2.slice(-4)), 2) + '</div></div>' +
       MGR.bracketHTML() +
       '<div class="panel"><b>Suben a Primera:</b> ' + h.promoted.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Segunda:</b> ' + h.relegated.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Primera RFEF:</b> ' + h.down2.map((id) => esc(T(id).name)).join(', ') + '<br><b>Suben desde Primera RFEF:</b> ' + h.up3.map((id) => esc(T(id).name)).join(', ') + '</div>' +
       '<nav class="menu" style="max-width:none">' + (st.fired ? '<button class="bar red" data-act="fired" autofocus><span class="n">!</span><span class="t">Reunión con la directiva</span></button>' : '<button class="bar gold" data-act="next" autofocus><span class="n">▶</span><span class="t">Empezar temporada ' + DB.SEASON_LABEL(h.season + 1) + '</span></button>') +
       '<button class="bar small grey" data-act="exit"><span class="n">0</span><span class="t">Guardar y salir</span></button></nav></div>',
-      { next: () => { LG.newSeason(st); save(); UI.toast('¡Nueva temporada! El mercado de fichajes está abierto.'); MGR.hub(); }, fired: () => MGR.fired(), exit: () => { save(); UI.mainMenu(); } });
+      { next: () => { LG.newSeason(st); save(); UI.toast('¡Nueva temporada! El mercado de fichajes está abierto.'); MGR.hub(); }, fired: () => MGR.fired(), exit: () => { save(); UI.mainMenu(); }, share: () => MGR.shareSeason(h) });
+  };
+
+  // ---------- imagen de la temporada para compartir en redes (1080 x 1350)
+  MGR.GAME_URL = 'dortcal.github.io/Misterfutbol';
+  MGR.seasonImage = async function (h) {
+    const st = MGR.st; const R = h.report; const t = T(R.team);
+    try { await Promise.all(['900 64px "Russo One"', '700 40px "Rajdhani"', '40px "VT323"'].map((f) => document.fonts.load(f))); } catch (e) { /* tipografías opcionales */ }
+    const W = 1080, H = 1350; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.lineJoin = 'round'; g.miterLimit = 2;
+    const kit = t.kit.home; const col1 = kit.p, col2 = kit.s;
+    // fondo: noche de estadio con focos y franjas del club
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0b1020'); bg.addColorStop(0.55, '#14213d'); bg.addColorStop(1, '#0a3d1f'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.save(); g.globalAlpha = 0.18; g.translate(W / 2, H / 2); g.rotate(-0.35);
+    for (let i = -8; i < 8; i++) { g.fillStyle = i % 2 ? col1 : col2; g.fillRect(i * 120, -1200, 60, 2400); }
+    g.restore();
+    [[120, 0], [W - 120, 0]].forEach(([x, y]) => { const rg = g.createRadialGradient(x, y, 10, x, y, 700); rg.addColorStop(0, 'rgba(255,255,230,0.35)'); rg.addColorStop(1, 'rgba(255,255,230,0)'); g.fillStyle = rg; g.fillRect(0, 0, W, H); });
+    // césped abajo
+    const grass = g.createLinearGradient(0, H - 260, 0, H); grass.addColorStop(0, 'rgba(47,120,40,0)'); grass.addColorStop(0.35, 'rgba(47,120,40,0.65)'); grass.addColorStop(1, 'rgba(36,96,30,0.95)'); g.fillStyle = grass; g.fillRect(0, H - 260, W, 260);
+    const gold = (y0, y1) => { const gg = g.createLinearGradient(0, y0, 0, y1); gg.addColorStop(0, '#fff3b8'); gg.addColorStop(0.5, '#f2c14a'); gg.addColorStop(1, '#a8740d'); return gg; };
+    const text = (txt, x, y, font, fill, align, stroke) => { g.font = font; g.textAlign = align || 'center'; g.textBaseline = 'alphabetic'; if (stroke) { g.lineWidth = stroke; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(txt, x, y); } g.fillStyle = fill; g.fillText(txt, x, y); };
+    // cabecera con el logo del juego
+    text('MÍSTER FÚTBOL', W / 2, 120, 'italic 900 92px "Russo One", Impact, sans-serif', gold(40, 130), 'center', 10);
+    text('26·27', W / 2, 175, '900 44px "Russo One", Impact, sans-serif', '#ffffff', 'center', 6);
+    text('MI TEMPORADA ' + DB.SEASON_LABEL(h.season), W / 2, 232, '700 40px "Rajdhani", sans-serif', '#cfe8ff', 'center', 0);
+    // escudo
+    const img = new Image(); img.src = GFX.badge(t, 360);
+    await new Promise((res) => { img.onload = res; img.onerror = res; });
+    g.save(); g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 30; g.drawImage(img, W / 2 - 150, 260, 300, 300); g.restore();
+    text(t.name.toUpperCase(), W / 2, 625, '900 58px "Russo One", Impact, sans-serif', '#ffffff', 'center', 8);
+    text('Míster ' + R.manager, W / 2, 672, '700 36px "Rajdhani", sans-serif', '#ffd966', 'center', 0);
+    // estrellas
+    for (let i = 0; i < 5; i++) {
+      const cx = W / 2 + (i - 2) * 110, cy = 760, r1 = 46, r2 = 20;
+      g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5; const r = k % 2 ? r2 : r1; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } g.closePath();
+      g.fillStyle = i < R.stars ? gold(cy - 46, cy + 46) : 'rgba(255,255,255,0.18)'; g.fill(); g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,0.6)'; g.stroke();
+    }
+    // frase (con salto de línea automático)
+    g.font = 'italic 700 40px "Rajdhani", sans-serif'; const words = ('«' + R.phrase + '»').split(' '); const lines = []; let cur = '';
+    words.forEach((wd) => { const tt = cur ? cur + ' ' + wd : wd; if (g.measureText(tt).width > 900) { lines.push(cur); cur = wd; } else cur = tt; }); if (cur) lines.push(cur);
+    lines.slice(0, 2).forEach((ln, k) => text(ln, W / 2, 850 + k * 46, 'italic 700 40px "Rajdhani", sans-serif', '#ffffff', 'center', 0));
+    // datos en cajas (dos filas)
+    const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+    const short = (x) => cap(String(x).replace('Eliminado en ', '').replace(' de final', '').replace('Primera eliminatoria', '1ª ronda'));
+    const rows = [[
+      ['LIGA', R.pos ? R.pos + 'º ' + (R.div === 1 ? 'Primera' : 'Segunda') : '—'],
+      ['BALANCE', R.rec ? R.rec[0] + 'V ' + R.rec[1] + 'E ' + R.rec[2] + 'D' : '—'],
+      ['GOLES', R.rec ? R.rec[3] + ' - ' + R.rec[4] : '—'],
+    ], [['COPA DEL REY', short(R.cup)]].concat(R.euro ? [[R.euro.comp.toUpperCase(), short(R.euro.txt)]] : [['PUNTOS', R.rec ? String(R.rec[5]) : '—']])];
+    rows.forEach((row, ri) => {
+      const bw = row.length === 3 ? 320 : 490, gap = 16, bx0 = (W - (row.length * bw + (row.length - 1) * gap)) / 2, by = 920 + ri * 132;
+      row.forEach(([lb, val], k) => {
+        const x = bx0 + k * (bw + gap); g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(x, by, bw, 116); g.fillStyle = gold(by, by + 6); g.fillRect(x, by, bw, 6);
+        text(lb, x + bw / 2, by + 40, '700 26px "Rajdhani", sans-serif', '#ffd966', 'center', 0);
+        let fs = 44; g.font = '700 ' + fs + 'px "Rajdhani", sans-serif'; while (g.measureText(val).width > bw - 20 && fs > 24) { fs -= 2; g.font = '700 ' + fs + 'px "Rajdhani", sans-serif'; }
+        text(val, x + bw / 2, by + 94, '700 ' + fs + 'px "Rajdhani", sans-serif', '#ffffff', 'center', 0);
+      });
+    });
+    // títulos o figuras del equipo
+    const titles = R.titles.map((k) => (MGR.TROPHY[k] || ['', k])[1]).join(' · ');
+    if (titles) { text('¡CAMPEÓN!', W / 2, 1222, '900 38px "Russo One", Impact, sans-serif', gold(1190, 1224), 'center', 5); text(titles, W / 2, 1262 - 6, '700 30px "Rajdhani", sans-serif', '#fff3b8', 'center', 3); }
+    else {
+      if (R.scorer) text('Máximo goleador: ' + R.scorer[0] + ' (' + R.scorer[1] + ')', W / 2, 1218, '700 32px "Rajdhani", sans-serif', '#ffffff', 'center', 4);
+      if (R.star) text('Mejor jugador: ' + R.star[0], W / 2, 1254 - 4, '700 30px "Rajdhani", sans-serif', '#cfe8ff', 'center', 4);
+    }
+    // pie con la llamada a jugar
+    g.fillStyle = 'rgba(0,0,0,0.78)'; g.fillRect(0, H - 82, W, 82);
+    text('¿Te atreves a superarlo? Juega gratis en ' , 28, H - 46, '700 28px "Rajdhani", sans-serif', '#ffffff', 'left', 0);
+    text(MGR.GAME_URL, 28, H - 14, '900 28px "Russo One", Impact, sans-serif', gold(H - 40, H - 12), 'left', 0);
+    text('Diseñado por David OZC', W - 28, H - 30, '700 24px "Rajdhani", sans-serif', 'rgba(255,255,255,0.8)', 'right', 0);
+    return c;
+  };
+  MGR.shareSeason = async function (h) {
+    UI.toast('Preparando la imagen…');
+    let c; try { c = await MGR.seasonImage(h); } catch (e) { UI.toast('No se ha podido crear la imagen.'); return; }
+    const url = c.toDataURL('image/png'); const name = 'mister-futbol-' + h.report.team + '-' + h.season + '.png';
+    UI.modal('Imagen para redes', '<img src="' + url + '" alt="Resumen de la temporada" style="width:100%;max-width:420px;display:block;margin:0 auto;border:3px solid #1d2126"><div class="row" style="justify-content:center;margin-top:10px"><button class="btn goldb" data-act="dl">⬇ Descargar imagen</button>' + (navigator.share ? '<button class="btn" data-act="sh">📤 Compartir</button>' : '') + '</div><p class="muted center" style="margin:6px 0 0">Comparte tu temporada en redes y reta a tus amigos.</p>', {
+      dl: () => { try { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { UI.toast('Mantén pulsada la imagen para guardarla.'); } },
+      sh: () => { c.toBlob(async (blob) => {
+        try {
+          const file = new File([blob], name, { type: 'image/png' });
+          const data = { title: 'Míster Fútbol 26·27', text: 'Mi temporada con el ' + T(h.report.team).name + ': ' + '★'.repeat(h.report.stars) + ' «' + h.report.phrase + '». ¿Te atreves a superarlo? https://' + MGR.GAME_URL };
+          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share(Object.assign({ files: [file] }, data)); else await navigator.share(data);
+        } catch (e) { /* cancelado */ }
+      }, 'image/png'); },
+    });
   };
 
   MGR.fired = function () {
