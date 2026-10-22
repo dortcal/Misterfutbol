@@ -850,6 +850,34 @@
     w.players[p.id] = p; DB.touch(w);
     return p;
   };
+  // ---------- canteranos reales: convocados de las selecciones españolas sub-15 a sub-20 (js/data/youth.js)
+  // Aparecen en la cantera de su club cuando cumplen 16 años (los que juegan fuera de España, en cualquier club).
+  // Nunca se añade uno que ya esté en el juego.
+  const LINE_ROLES = { POR: ['POR'], DEF: ['DFC', 'DFC', 'LD', 'LI'], MED: ['MC', 'MCD', 'MCO', 'MC'], DEL: ['DC', 'ED', 'EI', 'DC'] };
+  LG.realYouthPool = function (st, tid, opts) {
+    const pool = G.MF_YOUTH || []; opts = opts || {};
+    st.ry = st.ry || {};
+    if (!st._names || st._namesN !== Object.keys(st.world.players).length) { st._names = new Set(Object.values(st.world.players).map((p) => p.name)); st._namesN = Object.keys(st.world.players).length; }
+    return pool.filter(([name, , club, by]) => !st.ry[name] && !st._names.has(name) && st.season - by >= 16 && (club === tid || (!opts.own && !club)));
+  };
+  LG.takeRealYouth = function (st, tid, R, opts) {
+    opts = opts || {}; const ln = (e) => !opts.line || e[1] === opts.line;
+    const own = LG.realYouthPool(st, tid, { own: true }).filter(ln).filter((e) => !(opts.skip && opts.skip[e[0]]));
+    let cands = own.length ? own : (opts.own ? [] : LG.realYouthPool(st, tid).filter(ln).filter((e) => !(opts.skip && opts.skip[e[0]])));
+    if (!cands.length) return null;
+    const e = cands[Math.floor(R() * cands.length)];
+    const role = LINE_ROLES[e[1]][U.hash(e[0]) % LINE_ROLES[e[1]].length];
+    return { name: e[0], role, age: Math.min(21, Math.max(16, st.season - e[3])), cat: e[4] };
+  };
+  // convierte un jugador generado en el canterano real (nombre, demarcación y edad)
+  LG.applyRealYouth = function (st, p, y) {
+    p.name = y.name; p.short = U.surname(y.name); p.age = y.age; p.realYouth = y.cat;
+    if (y.role !== p.role) { p.role = y.role; p.line = DB.LINE_OF[y.role]; }
+    p.alt = DB.altRoles ? DB.altRoles(p.name, p.role) : p.alt;
+    p.pot = Math.max(p.pot || p.ovr, Math.min(94, p.ovr + 14));
+    st.ry = st.ry || {}; st.ry[y.name] = st.season; if (st._names) st._names.add(y.name);
+  };
+
   LG.youthProspects = function (st) {
     const R = U.rng(U.hash(st.userTeam + st.season + 'cantera'));
     const t = LG.team(st, st.userTeam);
@@ -858,7 +886,14 @@
     for (let i = 0; i < 3; i++) {
       const cs = LG.stf(st, 'cantera');
       const role = R.pick(roles); const ovr = U.clamp(Math.round(t.base - 18 + R.int(-3, 6) + (cs - 2) * 2), 48, 76);
-      out.push({ role, ovr, age: R.int(17, 18), name: R.pick(NOM) + ' ' + R.pick(APE), pot: U.clamp(ovr + R.int(8, 22) + (cs - 2) * 3, ovr, 94), tone: R.int(1, 4), hair: R.int(0, 4) });
+      const y = { role, ovr, age: R.int(17, 18), name: R.pick(NOM) + ' ' + R.pick(APE), pot: U.clamp(ovr + R.int(8, 22) + (cs - 2) * 3, ovr, 94), tone: R.int(1, 4), hair: R.int(0, 4) };
+      // internacionales de las categorías inferiores del club (o de fuera de España)
+      if (R() < 0.7) {
+        const skip = {}; out.forEach((o) => { if (o.real) skip[o.name] = 1; });
+        const ry = LG.takeRealYouth(st, st.userTeam, R, { skip });
+        if (ry) { y.name = ry.name; y.role = ry.role; y.age = ry.age; y.real = ry.cat; y.ovr = U.clamp(y.ovr + 3, 48, 78); y.pot = U.clamp(Math.max(y.pot, y.ovr + 14), y.ovr, 94); }
+      }
+      out.push(y);
     }
     return out;
   };
@@ -868,6 +903,7 @@
     const y = LG.youthProspects(st)[idx]; const R = U.rng(U.hash(y.name));
     const p = LG.genPlayer(st, st.userTeam, y.role, y.ovr, y.age, R);
     p.name = y.name; p.short = U.surname(y.name); p.pot = y.pot; p.tone = y.tone; p.hair = y.hair;
+    if (y.real) { p.realYouth = y.real; st.ry = st.ry || {}; st.ry[y.name] = st.season; }
     st.youthUsed = true; ACH('cantera', st);
     LG.news(st, 'El canterano ' + p.name + ' (' + y.role + ', ' + y.age + ' años) sube al primer equipo.', 'youth');
     return { ok: true, msg: p.name + ' ya entrena con el primer equipo.' };
@@ -1276,7 +1312,10 @@
       const gks = sq.filter((p) => p.role === 'POR').length;
       for (let i = 0; i < need || (i === 0 && gks < 2); i++) {
         const role = gks + i < 2 && i < 2 ? 'POR' : roles[(i + 1) % roles.length];
-        LG.genPlayer(st, t.id, role, U.clamp(t.base - 10 + R.int(-3, 4), 50, 80), R.int(18, 20), R);
+        const np = LG.genPlayer(st, t.id, role, U.clamp(t.base - 10 + R.int(-3, 4), 50, 80), R.int(18, 20), R);
+        // si el club tiene internacionales de categorías inferiores, sube uno de ellos (o, a veces, uno que juega fuera)
+        const ry = LG.takeRealYouth(st, t.id, R, { line: np.line, own: R() > 0.3 });
+        if (ry) { LG.applyRealYouth(st, np, ry); if (t.div === 1 || LG.isManaged(st, t.id)) LG.news(st, 'El internacional ' + ry.cat + ' ' + ry.name + ' sube al primer equipo del ' + t.short + '.', 'youth'); }
         if (LG.isManaged(st, t.id)) LG.news(st, 'Un nuevo canterano se incorpora a la plantilla del ' + t.short + '.', 'youth');
         else { st.squadChg = st.squadChg || {}; const c = st.squadChg[t.id] = st.squadChg[t.id] || { in: 0, out: 0 }; c.in++; }
       }

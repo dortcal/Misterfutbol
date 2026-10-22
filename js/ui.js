@@ -123,6 +123,7 @@
     let s = '';
     if (p.inj > 0) s += '<span class="tag t-inj" title="Lesionado">+' + p.inj + '</span>';
     if (p.sus > 0) s += '<span class="tag t-sus" title="Sancionado">S' + p.sus + '</span>';
+    if (p.realYouth && p.age <= 21) s += '<span class="tag t-xi" title="Internacional con la selección española ' + esc(p.realYouth) + '">🇪🇸 ' + esc(p.realYouth) + '</span>';
     return s;
   };
   UI.formHTML = (f) => '<span class="form">' + f.map((x) => '<i class="' + x + '">' + x + '</i>').join('') + '</span>';
