@@ -658,7 +658,7 @@
       let buyers = st.div[1].concat(st.div[2]).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.9 && (w.teams[id].base || 70) >= p.ovr - 10);
       // clubes extranjeros también pujan por los buenos jugadores
       const fx = (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12);
-      if (p.ovr >= 72 && fx.length && (R() < 0.45 || !buyers.length)) buyers = fx;
+      if (p.ovr >= 68 && fx.length && (R() < 0.45 || !buyers.length)) buyers = fx;
       if (!buyers.length) continue;
       const b = R.pick(buyers); const amount = Math.round(p.value * (0.85 + R() * 0.4) * (0.92 + 0.035 * LG.stf(st, 'dirdep')) * 10) / 10;
       st.offers.push({ id: 'o' + st.day + '_' + i + '_' + p.id, pid: p.id, from: b, amount, day: st.day });
@@ -682,7 +682,7 @@
     const w = st.world; const p = w.players[pid]; const R = LG.rng(st);
     if (p.retiring) return { ok: false, msg: p.name + ' se retira al final de la temporada: nadie puede ficharlo.' };
     if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado desde la jornada 30: espera a la próxima temporada para vender.' };
-    const buyers = st.div[1].concat(st.div[2], st.div[3], p.ovr >= 72 ? (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12) : []).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.6 && DB.teamStrength(w, id) >= p.ovr - 12 && DB.teamPlayers(w, id).length < 28);
+    const buyers = st.div[1].concat(st.div[2], st.div[3], p.ovr >= 68 ? (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12) : []).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.6 && DB.teamStrength(w, id) >= p.ovr - 12 && DB.teamPlayers(w, id).length < 28);
     if (!buyers.length) return { ok: false, msg: 'Ningún club está interesado en ' + p.name + ' ahora mismo.' };
     R.shuffle(buyers);
     const n = Math.min(buyers.length, R.int(1, 3));

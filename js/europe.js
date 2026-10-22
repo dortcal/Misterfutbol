@@ -11,9 +11,9 @@
 
   // Calendario (jornada de Liga ANTES de la cual se juega cada fecha europea)
   EU.CFG = {
-    ucl: { name: 'Champions League', short: 'Champions', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 3, prize: { part: 7, win: 0.8, draw: 0.3, ko: [1.5, 3, 4, 5, 6], champ: 10 } },
-    uel: { name: 'Europa League', short: 'Europa League', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 2, prize: { part: 1.7, win: 0.2, draw: 0.07, ko: [0.3, 0.6, 1, 1.5, 2], champ: 4 } },
-    uecl: { name: 'Conference League', short: 'Conference', md: 6, mdDays: [8, 9, 11, 13, 15, 16], order: 1, prize: { part: 1.2, win: 0.12, draw: 0.04, ko: [0.2, 0.4, 0.7, 1, 1.4], champ: 2.5 } },
+    ucl: { name: 'Champions League', short: 'Champions', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 3, prize: { part: 7, win: 0.8, draw: 0.3, ko: [1, 1.5, 2, 3, 4], champ: 10 } },
+    uel: { name: 'Europa League', short: 'Europa League', md: 8, mdDays: [3, 6, 9, 11, 13, 15, 20, 21], order: 2, prize: { part: 1.7, win: 0.2, draw: 0.07, ko: [0.3, 0.5, 0.8, 1.2, 1.6], champ: 4 } },
+    uecl: { name: 'Conference League', short: 'Conference', md: 6, mdDays: [8, 9, 11, 13, 15, 16], order: 1, prize: { part: 1.2, win: 0.12, draw: 0.04, ko: [0.2, 0.3, 0.5, 0.8, 1], champ: 2.5 } },
   };
   EU.KO = [['po', 'Eliminatoria de playoff', [24, 25]], ['r16', 'Octavos de final', [27, 28]], ['qf', 'Cuartos de final', [30, 31]], ['sf', 'Semifinales', [33, 34]], ['f', 'Final', [38]]];
   EU.FINAL_VENUES = { 2026: { ucl: ['Estadio Metropolitano', 'Madrid'], uel: ['Waldstadion', 'Fráncfort'], uecl: ['Beşiktaş Stadium', 'Estambul'] } };
@@ -159,7 +159,10 @@
   EU.pay = function (st, tid, amount, text) {
     if (!amount) return; const t = T(st, tid); if (!t || t.foreign) return;
     t.budget = Math.round((t.budget + amount) * 100) / 100;
-    if (tid === st.userTeam) st.finance.log.unshift({ s: st.season, d: st.day, inc: amount, exp: 0, items: [[text, amount]], bal: t.budget });
+    if (tid === st.userTeam) {
+      st.finance.log.unshift({ s: st.season, d: st.day, inc: amount, exp: 0, items: [[text, amount]], bal: t.budget });
+      if (/superar|campeón|finalista/.test(text)) LG.news(st, text + ': ' + U.money(amount) + '.', 'market');
+    }
   };
   // tanda de penaltis / prórroga en partido único o en la vuelta (con el global)
   EU.decide = function (st, f, res, L, R, agg) {
@@ -270,7 +273,10 @@
         C.phase = 'ko'; C.koIdx = 0;
         const u = tab.find((r) => r.id === st.userTeam);
         if (u) LG.news(st, C.name + ': el ' + T(st, st.userTeam).short + ' termina ' + u.pos + 'º en la fase de liga' + (u.pos <= 8 ? ' y pasa directamente a octavos.' : u.pos <= 24 ? ' y jugará la eliminatoria previa.' : ' y queda eliminado.'), 'cup');
-        tab.forEach((r) => { if (r.pos <= 8) EU.pay(st, r.id, P.ko[0], C.name + ': clasificación para octavos'); });
+        tab.forEach((r) => {
+          if (r.pos <= 24) EU.pay(st, r.id, P.ko[0], C.name + ': premio por superar la fase de liga');
+          if (r.pos <= 8) EU.pay(st, r.id, P.ko[1], C.name + ': premio por superar la previa (acceso directo a octavos)');
+        });
       }
       return;
     }
