@@ -11,11 +11,11 @@
 
   // ---------- infraestructura de pantallas
   UI.app = () => document.getElementById('app');
-  UI.show = function (html, acts, keys) {
+  UI.show = function (html, acts, keys, keepScroll) {
     UI.closeModal();
     UI.act = acts || {}; UI.keys = keys || null;
     UI.app().innerHTML = '<div class="screen">' + html + '</div>';
-    G.scrollTo(0, 0);
+    if (!keepScroll) G.scrollTo(0, 0);
     const first = UI.app().querySelector('[autofocus]'); if (first) first.focus({ preventScroll: true });
   };
   document.addEventListener('click', (e) => {
@@ -301,7 +301,21 @@
     let L = JSON.parse(JSON.stringify(o.lineup)); const T = Object.assign({}, o.tactics);
     let sel = null; // {type:'slot', i} | {type:'pl', id}
     const kit = team.kit.home;
-    const render = () => {
+    let first = true;
+    // re-dibuja sin volver arriba; en el móvil (campo y lista uno debajo del otro) acerca la parte que toca usar ahora
+    const render = (go) => {
+      const y0 = G.scrollY; const lw = document.querySelector('.lineup .tbl-wrap'); const ly0 = lw ? lw.scrollTop : 0;
+      draw();
+      if (first) { first = false; return; }
+      G.scrollTo(0, y0); const lw2 = document.querySelector('.lineup .tbl-wrap'); if (lw2) lw2.scrollTop = ly0;
+      const stacked = G.innerWidth <= 760;
+      if (!stacked || !go) return;
+      const target = document.querySelector(go === 'list' ? '.lineup .sqpanel' : '.lineup .pitchbox'); if (!target) return;
+      const r = target.getBoundingClientRect();
+      if (go === 'list' && lw2) { const row = lw2.querySelector('tr.bench1'); if (row) lw2.scrollTop = Math.max(0, row.offsetTop - 40); }
+      if (r.top < 0 || r.top > G.innerHeight * 0.45) G.scrollTo({ top: G.scrollY + r.top - 8, behavior: 'smooth' });
+    };
+    const draw = () => {
       const slots = DB.FORMATIONS[L.formation];
       const squad = DB.teamPlayers(w, tid).sort((a, b) => { const ia = L.xi.indexOf(a.id), ib = L.xi.indexOf(b.id); if ((ia >= 0) !== (ib >= 0)) return ia >= 0 ? -1 : 1; if (ia >= 0) return ia - ib; return ['POR', 'DEF', 'MED', 'DEL'].indexOf(a.line) - ['POR', 'DEF', 'MED', 'DEL'].indexOf(b.line) || b.ovr - a.ovr; });
       const pitch = slots.map((s, i) => {
@@ -321,29 +335,43 @@
         '<div class="row"><b style="min-width:92px">PASES</b>' + seg('passing', T.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '<span class="spacer"></span><button class="btn alt" data-act="auto">Once automático</button><button class="btn goldb" data-act="done">Confirmar</button></div></div>' +
         (o.compNote ? '<div class="panel" style="padding:8px 12px">' + o.compNote + '</div>' : '') + (o.report ? '<div class="panel report">' + o.report(L, T) + '</div>' : '') +
         '<div class="lineup"><div><div class="pitchbox"><div class="cc"></div>' + pitch + '</div><p class="muted">Borde amarillo: juega en otra posición de su misma línea (rinde un poco menos). Borde rojo: juega en otra línea y rinde bastante menos. Los jugadores polivalentes (posiciones extra en gris) no pierden nivel en ellas.</p></div>' +
-        '<div class="panel" style="padding:6px"><div class="tbl-wrap" style="max-height:70vh;overflow-y:auto"><table class="tbl sq"><thead><tr><th>#</th><th>Pos</th><th>Jugador</th><th class="num">Med</th><th>Físico</th><th class="num hide-sm">Moral</th><th></th></tr></thead><tbody>' +
-        squad.map((p) => { const i = L.xi.indexOf(p.id); return '<tr class="click ' + (sel && sel.type === 'pl' && sel.id === p.id ? 'sel' : '') + '" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + UI.status(p) + (i >= 0 ? '<span class="tag t-xi">' + DB.FORMATIONS[L.formation][i][0] + '</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td style="white-space:nowrap">' + UI.fit(p.fit) + ' <small>' + Math.round(p.fit) + '%</small></td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td><button class="btn alt" style="min-height:26px;padding:0 6px;font-size:11px" data-act="info" data-id="' + p.id + '" aria-label="Ficha de ' + esc(p.name) + '">i</button></td></tr>'; }).join('') +
-        '</tbody></table></div></div></div></div>',
+        '<div class="panel sqpanel" style="padding:6px"><div class="tbl-wrap" style="max-height:70vh;overflow-y:auto"><table class="tbl sq"><thead><tr><th>#</th><th>Pos</th><th>Jugador</th><th class="num">Med</th><th>Físico</th><th class="num hide-sm">Moral</th><th></th></tr></thead><tbody>' +
+        squad.map((p, n) => { const i = L.xi.indexOf(p.id); const selSlot = sel && sel.type === 'slot' ? slots[sel.i][0] : null;
+          const fits = selSlot && i < 0 && DB.available(p) && DB.posPenalty(p, selSlot) === 0;
+          return '<tr class="click ' + (sel && sel.type === 'pl' && sel.id === p.id ? 'sel ' : '') + (fits ? 'fitpos ' : '') + (i < 0 && (n === 0 || L.xi.indexOf(squad[n - 1].id) >= 0) ? 'bench1' : '') + '" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + UI.status(p) + (i >= 0 ? '<span class="tag t-xi">' + DB.FORMATIONS[L.formation][i][0] + '</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td style="white-space:nowrap">' + UI.fit(p.fit) + ' <small>' + Math.round(p.fit) + '%</small></td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td><button class="btn alt" style="min-height:26px;padding:0 6px;font-size:11px" data-act="info" data-id="' + p.id + '" aria-label="Ficha de ' + esc(p.name) + '">i</button></td></tr>'; }).join('') +
+        '</tbody></table></div></div></div></div>' + hint(slots),
         {
           done: () => { const v = DB.validLineup(w, tid, L); o.onDone(v, T); },
+          cancelSel: () => { sel = null; render(); },
           form: (el) => { L = DB.autoLineup(w, tid, el.dataset.f); sel = null; render(); },
           tac: (el) => { T[el.dataset.k] = el.dataset.v; render(); },
           auto: () => { if (o.autoFn) { const r = o.autoFn(L.formation); L = r.lineup; if (r.tactics) Object.assign(T, r.tactics); if (r.msg) UI.toast(r.msg); } else L = DB.autoLineup(w, tid, L.formation); sel = null; render(); },
           info: (el, e) => { e.stopPropagation(); UI.playerModal(w, +el.dataset.id, {}); },
           slot: (el) => {
             const i = +el.dataset.i;
+            let go = null;
             if (sel && sel.type === 'pl') { assign(i, sel.id); sel = null; }
             else if (sel && sel.type === 'slot' && sel.i !== i) { const t = L.xi[i]; L.xi[i] = L.xi[sel.i]; L.xi[sel.i] = t; sel = null; }
-            else sel = sel && sel.type === 'slot' && sel.i === i ? null : { type: 'slot', i };
-            render();
+            else if (sel && sel.type === 'slot' && sel.i === i) sel = null;
+            else { sel = { type: 'slot', i }; go = 'list'; }   // titular elegido: acerca la lista para elegir quién entra
+            render(go);
           },
           pl: (el) => {
-            const id = +el.dataset.id;
-            if (sel && sel.type === 'slot') { assign(sel.i, id); sel = null; }
-            else sel = sel && sel.type === 'pl' && sel.id === id ? null : { type: 'pl', id };
-            render();
+            const id = +el.dataset.id; let go = null;
+            if (sel && sel.type === 'slot') { assign(sel.i, id); sel = null; go = 'pitch'; }   // cambio hecho: vuelve al campo para verlo
+            else if (sel && sel.type === 'pl' && sel.id === id) sel = null;
+            else { sel = { type: 'pl', id }; go = 'pitch'; }
+            render(go);
           },
-        });
+        }, null, !first);
+    };
+    // aviso fijo abajo mientras hay un cambio a medias
+    const hint = (slots) => {
+      if (!sel) return '';
+      let txt;
+      if (sel.type === 'slot') { const p = w.players[L.xi[sel.i]]; txt = '<b>' + slots[sel.i][0] + (p ? ' · ' + esc(p.short) : '') + '</b>: toca el jugador que entra. En verde, los de su posición.'; }
+      else { const p = w.players[sel.id]; txt = '<b>' + (p ? esc(p.short) : '') + '</b>: toca el puesto del campo donde va a jugar.'; }
+      return '<div style="height:72px" aria-hidden="true"></div><div class="lu-hint" role="status"><span>' + txt + '</span><button class="btn alt" data-act="cancelSel">Cancelar</button></div>';
     };
     const assign = (i, id) => {
       const p = w.players[id];

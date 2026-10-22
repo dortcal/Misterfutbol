@@ -435,3 +435,9 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 @media (max-width: 560px) { .show-sm { display: inline; } }
 table.sqstats th .tab { letter-spacing: 0; padding: 2px 4px !important; }
 @media (max-width: 560px) { table.sqstats td, table.sqstats th { padding-left: 3px; padding-right: 3px; } }
+/* alineación: cambio a medias */
+.lu-hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom, 0px)); z-index: 40; display: flex; align-items: center; gap: 10px; width: min(560px, calc(100% - 20px)); background: #1d2126; color: #fff; padding: 8px 10px 8px 14px; border: 2px solid var(--bar-hi); box-shadow: 0 6px 18px rgba(0,0,0,.45); font-size: 15px; }
+.lu-hint span { flex: 1; }
+.lu-hint .btn { flex: none; }
+table.tbl.sq tr.fitpos td { background: #d6f0c9; }
+table.tbl.sq tr.fitpos:hover td { background: #c4e8b2; }
