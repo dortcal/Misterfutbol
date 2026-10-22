@@ -166,7 +166,10 @@
     const seg = (name, val, opts) => '<div class="seg" role="group">' + opts.map(([v, l]) => '<button class="btn ' + (String(val) === String(v) ? 'on' : '') + '" data-act="set" data-k="' + name + '" data-v="' + v + '">' + l + '</button>').join('') + '</div>';
     UI.show(UI.head('Opciones', null, 'menu') + '<div class="wrap"><div class="panel grid2">' +
       '<div><h3>Sonido</h3><div class="row"><button class="btn ' + (A.on ? '' : 'alt') + '" data-act="toggleSound">' + (A.on ? 'Activado' : 'Desactivado') + '</button></div>' +
-      (A.MUSIC_ENABLED ? '<label class="f" style="margin-top:10px">Música <input type="range" min="0" max="1" step="0.05" value="' + A.musicVol + '" data-inp="vol" data-k="m" id="vol-m"></label>' : '') +
+      (A.MUSIC_ENABLED ? '<label class="f" style="margin-top:10px">Música <input type="range" min="0" max="1" step="0.05" value="' + A.musicVol + '" data-inp="vol" data-k="m" id="vol-m"></label>' +
+        '<h3 style="margin-top:10px">Música de los menús</h3><div class="seg" role="group" style="flex-wrap:wrap">' + [['lista', 'Todas (lista)']].concat(A.TRACKS.map((x) => [x.id, x.name]), [['off', 'Sin música']]).map(([v, l]) => '<button class="btn ' + (A.musicMode === v ? 'on' : '') + '" data-act="set" data-k="track" data-v="' + v + '">' + esc(l) + '</button>').join('') + '</div>' +
+        '<div class="row" style="margin-top:6px"><button class="btn alt" data-act="nexttrack">⏭ Siguiente tema</button><span class="muted" id="nowplaying">' + (A.playing ? '♪ ' + esc(A.currentTrack().name) + ' · ' + esc(A.currentTrack().style) : '') + '</span></div>' +
+        '<p class="muted" style="margin:4px 0 0">Temas originales del juego inspirados en estilos deportivos: himno coral, synth de acción, fanfarria televisiva, rock de entrenamiento y eurodance.</p>' : '') +
       '<label class="f">Efectos y público <input type="range" min="0" max="1" step="0.05" value="' + A.sfxVol + '" data-inp="vol" data-k="s" id="vol-s"></label>' +
       '<div style="margin-top:8px"><h3>Narración por voz</h3>' + seg('voice', A.voiceOn ? 1 : 0, [[1, 'Sí'], [0, 'No']]) + '<p class="muted">Usa la voz en español de tu dispositivo para cantar los goles.</p></div></div>' +
       '<div><h3>Duración del partido</h3>' + seg('duration', s.duration, [[2, '2 min'], [4, '4 min'], [6, '6 min'], [10, '10 min']]) +
@@ -179,11 +182,13 @@
           const k = el.dataset.k, v = el.dataset.v;
           if (k === 'voice') { A.voiceOn = v === '1'; U.store.set('mf27_voice', A.voiceOn); }
           else if (k === 'assistant') s.assistant = v === '1';
+          else if (k === 'track') { A.init(); A.setTrack(v); }
           else if (k === 'cam') { if (v === 'total') s.camera = 'total'; else { s.camera = 'follow'; s.zoom = parseFloat(v); } }
           else s[k] = parseFloat(v);
           UI.saveSettings(); UI.options();
         },
         toggleSound: () => { A.init(); A.setOn(!A.on); UI.options(); },
+        nexttrack: () => { A.init(); if (A.musicMode !== 'lista') A.setTrack('lista'); A.nextTrack(); setTimeout(() => UI.options(), 50); },
         vol: (el) => { const m = el.dataset.k === 'm' ? +el.value : A.musicVol, x = el.dataset.k === 's' ? +el.value : A.sfxVol; A.init(); A.setVolumes(m, x); },
         wipe: () => UI.confirm('¿Borrar todas las partidas guardadas y los ajustes? No se puede deshacer.', 'Borrar', () => {
           [1, 2, 3].forEach((k) => U.store.del(MF.LG.SAVE_KEY + k)); U.store.del('mf27_settings'); U.store.del('mf27_audio');

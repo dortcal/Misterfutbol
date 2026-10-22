@@ -148,16 +148,34 @@
     MUI.m = m; MUI.R = null;
     const R = new MF.Renderer(canvas, m, { zoom: S.zoom, weather: cfg.weather, camera: S.camera || 'total', touch }); MUI.R = R;
     if (radar && R.rot) { radar.width = 72; radar.height = 110; }
-    let speed = 1, paused = false, ended = false, last = performance.now(), acc = 0, raf = 0, frame = 0, tickT = 0, banT = 0;
+    let speed = 1, paused = false, ended = false, last = performance.now(), acc = 0, raf = 0, frame = 0, tickT = 0, banT = 0, chantT = 12, tackleT = 0;
     const ban = root.querySelector('#ban'); const tick = root.querySelector('#tick');
     const showTick = (txt) => { if (!txt) return; tick.textContent = txt; tick.hidden = false; tickT = 4; };
     const showBanner = (html, t) => { ban.innerHTML = html; banT = t || 2.4; };
     hooks.sound = (name) => {
       if (name === 'whistle') A.sfxPlay('whistle', 1);
+      else if (name === 'post') A.sfxPlay(Math.random() < 0.4 ? 'crossbar' : 'post');
       else A.sfxPlay(name);
+    };
+    // efectos de ambiente según lo que pasa en el campo
+    const crowdFx = (ev) => {
+      switch (ev.type) {
+        case 'goal': A.sfxPlay('net'); setTimeout(() => A.sfxPlay('applause', 2.5), 600); setTimeout(() => A.sfxPlay('chant', Math.random() < 0.5 ? 'ole' : 'vamos'), 3200); chantT = 25; break;
+        case 'goalkick': if (m.ball && m.ball.shotFrom) A.sfxPlay('ooh'); break;
+        case 'save': setTimeout(() => A.sfxPlay('applause', 1.2), 300); break;
+        case 'header': A.sfxPlay('header'); break;
+        case 'steal': if (tackleT <= 0) { A.sfxPlay('tackle'); tackleT = 1.5; } break;
+        case 'foul': if (ev.sev > 0.5) A.sfxPlay('whistles', 1.6); break;
+        case 'red': setTimeout(() => A.sfxPlay('boo'), 400); break;
+        case 'yellow': setTimeout(() => A.sfxPlay('whistles', 1), 300); break;
+        case 'penalty': A.crowdSwell(0.8, 2.5); break;
+        case 'halftime': case 'end': setTimeout(() => A.sfxPlay('applause', 3), 700); break;
+        case 'wall': A.sfxPlay('tackle'); break;
+      }
     };
     hooks.event = (ev) => {
       const txt = MUI.comment(ev, m, w);
+      try { crowdFx(ev); } catch (e) { /* sonido opcional */ }
       if (ev.type === 'goal') {
         const p = w.players[ev.pid]; const team = m.T[ev.side];
         showBanner('<div class="big">¡GOOOL!</div><span class="sm">' + (ev.own ? 'En propia puerta' : esc(p ? p.name : '')) + ' · ' + esc(team.short) + ' ' + m.score[0] + '-' + m.score[1] + '</span>', 3);
@@ -373,6 +391,9 @@
       raf = requestAnimationFrame(loop);
       let dt = Math.min(0.05, (now - last) / 1000); last = now;
       if (!paused && !ended) {
+        // cánticos y palmas de la grada de vez en cuando
+        tackleT -= dt; chantT -= dt;
+        if (chantT <= 0 && m.phase === 'play') { A.sfxPlay('chant'); chantT = 22 + Math.random() * 30; }
         if (m.human >= 0) {
           R.flip = m.dir[m.human] === -1;
           const v = R.screenVecToWorld(scr[0], scr[1]);
@@ -504,7 +525,7 @@
       res.events.forEach((e, i) => {
         if (evShown.has(i) || e.min > m) return; evShown.add(i);
         const team = (e.side === 0 ? th : ta).short.toUpperCase(); const nm = name(e.pid).toUpperCase();
-        if (e.type === 'goal') { sc[e.side]++; line(e.min + '\' GOL DEL ' + team + ': ' + nm + (e.own ? ' (P.P.)' : e.pen ? ' (PEN.)' : '') + ' · ' + sc[0] + '-' + sc[1], 'gol'); A.sfxPlay('goal'); }
+        if (e.type === 'goal') { sc[e.side]++; line(e.min + '\' GOL DEL ' + team + ': ' + nm + (e.own ? ' (P.P.)' : e.pen ? ' (PEN.)' : '') + ' · ' + sc[0] + '-' + sc[1], 'gol'); A.sfxPlay('goal'); A.sfxPlay('net'); if (speed < 4) setTimeout(() => A.sfxPlay('chant', 'ole'), 900); }
         if (e.type === 'red') line(e.min + '\' EXPULSADO ' + nm + ' (' + team + ')', 'roja');
         if (e.type === 'injury') { line(e.min + '\' SE LESIONA ' + nm + ' (' + team + ')'); if (e.side === us && !assist() && L[us].xi.indexOf(e.pid) >= 0) stop = 'Lesión de ' + name(e.pid) + ': haz un cambio.'; }
         if (e.type === 'sub') line(e.min + '\' CAMBIO EN EL ' + team + ': ENTRA ' + nm + ', SALE ' + name(e.out).toUpperCase(), 'cambio');
