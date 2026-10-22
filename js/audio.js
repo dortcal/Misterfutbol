@@ -8,11 +8,23 @@
   if (cfg) { A.musicVol = cfg.m; A.sfxVol = cfg.s; A.on = cfg.on !== false; }
   A.save = () => U.store.set('mf27_audio', { m: A.musicVol, s: A.sfxVol, on: A.on });
 
+  // reanuda el sonido: en iPhone/iPad el contexto pasa a «interrupted» al bloquear la pantalla, cambiar de app o recibir
+  // una llamada, y en Android a «suspended»; solo se puede reanudar dentro de un toque del usuario
+  A.wake = function () {
+    const c = A.ctx; if (!c) return;
+    if (c.state !== 'running' && c.state !== 'closed') { try { const pr = c.resume(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) { /* sin permiso aún */ } }
+  };
   A.init = function () {
-    if (A.ctx) { if (A.ctx.state === 'suspended') A.ctx.resume(); return true; }
+    if (A.ctx && A.ctx.state === 'closed') A.ctx = null;
+    if (A.ctx) { A.wake(); return true; }
     const AC = G.AudioContext || G.webkitAudioContext; if (!AC) return false;
+    // iOS 16.4+: que el juego suene aunque el interruptor de silencio esté activado (como un vídeo). El botón ♪ lo silencia.
+    try { if (G.navigator && G.navigator.audioSession) G.navigator.audioSession.type = 'playback'; } catch (e) { /* no disponible */ }
     try { A.ctx = new AC(); } catch (e) { return false; }
     const c = A.ctx;
+    // desbloqueo clásico de iOS: un sonido vacío dentro del primer toque
+    try { const sb = c.createBufferSource(); sb.buffer = c.createBuffer(1, 1, 22050); sb.connect(c.destination); sb.start(0); } catch (e) { /* nada */ }
+    A.wake();
     A.master = c.createGain(); A.master.gain.value = A.on ? 1 : 0; A.master.connect(c.destination);
     A.mus = c.createGain(); A.mus.gain.value = A.musicVol * 0.5; A.mus.connect(A.master);
     A.sfx = c.createGain(); A.sfx.gain.value = A.sfxVol; A.sfx.connect(A.master);
@@ -220,6 +232,8 @@
     A._timer = setInterval(() => {
       if (!A.playing) return;
       const tr = A.TRACKS[A._cur]; const e = 60 / tr.bpm / 2;
+      if (c.state !== 'running') return;   // sonido pausado por el sistema: se sigue al reanudarlo
+      if (A._next < c.currentTime - 0.1) A._next = c.currentTime + 0.05;   // tras volver de segundo plano, sin ráfagas de notas atrasadas
       while (A._next < c.currentTime + 0.3) {
         try { tr.bar(A._next, bar % tr.bars, e, loops); } catch (er) { /* nada */ }
         A._next += e * 8; bar++;
