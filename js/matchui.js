@@ -458,7 +458,8 @@
       (cfg.agg && res.decided ? '<p class="center" style="margin:4px 0 0">Global: ' + esc(th.short) + ' ' + (res.score[0] + cfg.agg[0]) + '-' + (res.score[1] + cfg.agg[1]) + ' ' + esc(ta.short) + ' · <b>se clasifica el ' + esc((res.winSide === 0 ? th : ta).short) + '</b></p>' : (res.decided ? '<p class="center" style="margin:4px 0 0"><b>Gana el ' + esc((res.winSide === 0 ? th : ta).short) + '</b></p>' : '')) +
       (function () { const cap = cfg.capacity || th.cap; let att = cfg.attendance; if (!att && cap) { const fill = U.clamp(0.55 + (Math.max(th.base || 70, ta.base || 70) - 70) * 0.02 + (cfg.friendly ? -0.1 : 0) + ((U.hash(cfg.home + cfg.away) % 12) - 6) / 100, 0.3, 0.99); att = Math.round(cap * fill); } return att && cap ? '<p class="center muted" style="margin:8px 0 0">🏟️ ' + att.toLocaleString('es-ES') + ' espectadores · ' + Math.round(att / cap * 100) + '% del aforo de ' + esc(cfg.venue || th.stadium) + ' (' + cap.toLocaleString('es-ES') + ')</p>' : ''; })() +
       (cupDraw ? '<p class="center" style="margin:10px 0 0"><b>Empate al final de los 90 minutos:</b> la eliminatoria se decide en la prórroga y, si hace falta, en la tanda de penaltis. Pulsa Continuar para conocer el desenlace.</p>' : '') + '</div>' +
-      '<div class="grid2"><div class="panel" style="display:grid;gap:6px"><h3>Estadísticas</h3>' + srow('Posesión %', st.poss[0], st.poss[1]) + srow('Tiros', st.shots[0], st.shots[1]) + srow('A puerta', st.onTarget[0], st.onTarget[1]) + srow('Córners', st.corners[0], st.corners[1]) + srow('Faltas', st.fouls[0], st.fouls[1]) + '</div>' +
+      '<div class="grid2"><div class="panel" style="display:grid;gap:6px"><h3>Estadísticas</h3>' + srow('Posesión %', st.poss[0], st.poss[1]) + srow('Tiros', st.shots[0], st.shots[1]) + srow('A puerta', st.onTarget[0], st.onTarget[1]) + srow('Córners', st.corners[0], st.corners[1]) + srow('Faltas', st.fouls[0], st.fouls[1]) +
+      (st.xg ? srow('Goles esperados (xG)', +st.xg[0].toFixed(1), +st.xg[1].toFixed(1)) + srow('Paradas', st.saves[0], st.saves[1]) + (st.passes && st.passes[0] ? srow('Pases', st.passes[0], st.passes[1]) + srow('Acierto en el pase %', Math.round(st.passOk[0] / Math.max(1, st.passes[0]) * 100), Math.round(st.passOk[1] / Math.max(1, st.passes[1]) * 100)) : '') : '') + '</div>' +
       '<div class="panel"><h3>Mejor jugador</h3>' + (mvp ? '<div class="pcard"><img class="face" src="' + GFX.face(mvp, w.teams[mvp.team].kit.home.p, 76) + '" width="76" height="76" alt=""><div><div class="big">' + esc(mvp.name) + '</div><div>' + esc(w.teams[mvp.team].short) + ' · nota ' + res.ratings[mvpId].toFixed(1) + '</div></div></div>' : '') + '</div></div>' +
       '<nav class="menu" style="max-width:none">' + (cfg.onEnd ? '<button class="bar gold" data-act="cont" data-key="Enter" autofocus><span class="n">▶</span><span class="t">Continuar</span></button>' :
         '<button class="bar gold" data-act="again" autofocus><span class="n">↻</span><span class="t">Revancha</span></button><button class="bar" data-act="exit" data-key="Escape"><span class="n">◀</span><span class="t">Volver al amistoso</span></button>') + '</nav></div>',
@@ -479,7 +480,7 @@
     let res = null, min = 0, paused = false, speed = S.teleSpeed || 2, timer = null, done = false, iv = null, et = false;
     const agg = cfg.agg || [0, 0];
     const level = () => res.score[0] + agg[0] === res.score[1] + agg[1];
-    const simTo = (to, auto) => { res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: to, endMinute: et ? 120 : 90, base: res, autoSubs: auto || autoS() })); L = res.L; min = to; };
+    const simTo = (to, auto) => { res = MF.SIM.play(w, Object.assign({}, ex, { home: cfg.home, away: cfg.away, lhome: L[0], laway: L[1], thome: TT[0], taway: TT[1], neutral: !!cfg.neutral, rng: R, fromMinute: min, toMinute: to, endMinute: et ? 120 : 90, base: res, autoSubs: auto || autoS(), coach: coachFlags() })); L = res.L; min = to; };
     const decide = (pens) => { if (!cfg.ko) return; res.decided = true; res.et = et; if (pens) res.pens = pens; const t0 = res.score[0] + agg[0], t1 = res.score[1] + agg[1]; res.winSide = t0 > t1 ? 0 : t1 > t0 ? 1 : (res.pens[0] > res.pens[1] ? 0 : 1); };
     const onPitch = (s) => { const reds = new Set(res.events.filter((e) => e.type === 'red' && e.side === s).map((e) => e.pid)); return L[s].xi.filter((id) => id !== null && !reds.has(id)); };
     const sc = [0, 0]; const evShown = new Set();
@@ -506,20 +507,12 @@
     function restart() { if (iv) clearInterval(iv); if (!paused && !done) iv = setInterval(step, tickMs()); }
     function autoS() { return [us === 0 ? assist() : true, us === 1 ? assist() : true]; }
     // decisiones del segundo entrenador (o de la IA rival) durante el partido
-    function coach(s, m) {
-      if (s === us && !assist()) return;
-      const gd = res.score[s] - res.score[1 - s]; const t = TT[s]; const q = s === us ? stars : 3;
-      if (q < 2 && s === us) return;
-      if (m === 60 || m === 75) {
-        if (gd < 0 && t.style !== 'ofensiva') { t.style = 'ofensiva'; if (s === us) line(m + '\' EL SEGUNDO ENTRENADOR PIDE IR AL ATAQUE'); }
-        else if (gd > 0 && m === 75 && t.style === 'ofensiva') { t.style = 'equilibrada'; if (s === us) line(m + '\' EL SEGUNDO ENTRENADOR ORDENA GUARDAR LA VENTAJA'); }
-      }
-    }
+    // el cambio de plan según el marcador lo decide el propio motor (SIM.coach) para la IA y el segundo entrenador
+    function coachFlags() { const a = autoS(); if (us >= 0 && stars < 2) a[us] = false; return a; }
     function step() {
       if (paused || done) return;
       if (!document.getElementById('tmin')) { clearInterval(iv); return; }
       const m = min + 1;
-      if (m === 60 || m === 75) { coach(0, m); coach(1, m); }
       simTo(m);
       document.getElementById('tmin').textContent = m;
       let stop = '';
@@ -530,6 +523,9 @@
         if (e.type === 'red') line(e.min + '\' EXPULSADO ' + nm + ' (' + team + ')', 'roja');
         if (e.type === 'injury') { line(e.min + '\' SE LESIONA ' + nm + ' (' + team + ')'); if (e.side === us && !assist() && L[us].xi.indexOf(e.pid) >= 0) stop = 'Lesión de ' + name(e.pid) + ': haz un cambio.'; }
         if (e.type === 'sub') line(e.min + '\' CAMBIO EN EL ' + team + ': ENTRA ' + nm + ', SALE ' + name(e.out).toUpperCase(), 'cambio');
+        if (e.type === 'save' && (e.big || e.kind === 'pen') && e.pid) line(e.min + '\' ¡' + (e.kind === 'pen' ? 'PENALTI PARADO' : 'PARADÓN') + ' DE ' + nm + '! (' + team + ') A ' + name(e.shooter).toUpperCase());
+        if (e.type === 'chance') line(e.min + '\' ' + (e.out === 'post' ? '¡AL PALO! ' + nm + ' (' + team + ')' : e.kind === 'pen' ? nm + ' (' + team + ') FALLA EL PENALTI' : e.out === 'block' ? '¡QUÉ OCASIÓN! LA DEFENSA BLOQUEA EL REMATE DE ' + nm + ' (' + team + ')' : '¡SE LE ESCAPA A ' + nm + '! (' + team + ') OCASIÓN CLARÍSIMA'));
+        if (e.type === 'tactic' && (e.side === us || us < 0)) line(e.min + '\' ' + (e.side === us ? 'EL SEGUNDO ENTRENADOR' : 'EL ' + team) + (e.style === 'ofensiva' ? ' SE LANZA AL ATAQUE' : e.style === 'defensiva' ? ' SE ATRINCHERA PARA GUARDAR LA VENTAJA' : ' ORDENA GUARDAR LA VENTAJA'));
       });
       document.getElementById('s0').textContent = res.score[0]; document.getElementById('s1').textContent = res.score[1];
       if (m === 45) { line('DESCANSO · ' + res.score[0] + '-' + res.score[1]); if (us >= 0 && !assist()) stop = 'Descanso'; }
@@ -592,7 +588,7 @@
         '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((id) => '<tr class="click" data-in="' + id + '"><td>' + UI.pos(w.players[id]) + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + '</td><td>' + UI.fit(w.players[id].fit) + '</td></tr>').join('') : '<tr><td>Sin suplentes</td></tr>') + '</tbody></table></div></div></div></div></div>';
       const box = document.getElementById('tovl');
       box.querySelector('[data-p="go"]').addEventListener('click', () => { MUI._outSel = null; box.innerHTML = ''; paused = false; restart(); });
-      box.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; if (cfg.onTactics) cfg.onTactics(t); A.sfxPlay('click'); openPanel(title); }));
+      box.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; if (res && res.tacMod) res.tacMod[us] = null; if (cfg.onTactics) cfg.onTactics(t); A.sfxPlay('click'); openPanel(title); }));
       box.querySelectorAll('[data-out]').forEach((r) => r.addEventListener('click', () => { MUI._outSel = +r.dataset.out; openPanel(title); }));
       box.querySelectorAll('[data-in]').forEach((r) => r.addEventListener('click', () => {
         const o = MUI._outSel; if (!o) { UI.toast('Primero elige quién sale.'); return; }

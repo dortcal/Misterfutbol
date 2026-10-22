@@ -40,6 +40,34 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Clubes extranjeros vivos**: desde la tercera temporada sus jugadores envejecen y evolucionan, los veteranos se retiran y llegan jóvenes con nombres de su país.
   - Guardado automático en el navegador (3 ranuras) y exportación/importación de partidas.
 
+## Motor de simulación (modo Resultado y resto de partidos)
+
+`js/sim.js` simula el partido minuto a minuto con un modelo **por ocasiones**:
+
+- **Posesión**: cada minuto domina el balón uno de los dos equipos según su centro del campo, su calidad de pase, el plan de juego, el campo y el marcador. La posesión final es el tiempo con el balón.
+- **Pases**: se juegan en los minutos con el balón; el acierto depende del pase y la calidad del equipo, del tipo de pase (corto, mixto, largo), de la presión rival y del cansancio.
+- **Tiros y goles esperados (xG)**: los tiros salen de la calidad del ataque frente a la defensa rival. Un ataque mejor genera más tiros y de más calidad. Cada tiro es de un tipo (disparo lejano, remate en el área, de cabeza, ocasión clarísima o balón parado) con su propio xG y probabilidad de bloqueo y de ir a puerta. El rematador se elige según el tipo de ocasión, su puesto y sus atributos.
+- **Portero**: cada tiro a puerta se resuelve como gol o parada según la calidad del portero. Las paradas, los bloqueos, los córners y las ocasiones falladas se registran como eventos.
+- **Faltas**: de ellas salen las tarjetas (con el riesgo de la segunda amarilla) y los penaltis. Hay más faltas con presión alta, con jugadores agresivos y cuando se defiende.
+- **Contexto**: el cansancio, las expulsiones y el marcador influyen (el que gana administra la ventaja; el que pierde arriesga y se descubre). La IA y el segundo entrenador cambian el plan a los minutos 60 y 75 según el resultado.
+- **Coherencia**: el marcador, las estadísticas y el teletipo salen de los mismos eventos.
+
+`node tools/calib.js <etiqueta> <vueltas>` simula ligas completas, tácticas, fatiga, porteros y partidos por tramos con semillas fijas, y comprueba que las estadísticas cuadran. `tools/result_antes.json` y `tools/result_despues.json` guardan la comparación del cambio de motor.
+
+| Primera (10 temporadas simuladas) | Motor anterior | Motor actual | LaLiga 2024-25 |
+|---|---|---|---|
+| Goles por partido | 2,45 | 2,58 | 2,62 |
+| Local / empate / visitante | 44,9 / 25,4 / 29,7 % | 44,9 / 26,6 / 28,5 % | 44,5 / 25,5 / 30,0 % |
+| Partidos con 4+ goles de diferencia | 2,9 % | 5,2 % | 5,0 % |
+| Tiros por equipo · a puerta | 8,7 · 3,9 | 11,3 · 4,0 | hipótesis: 12-13 · 4-4,5 |
+| Córners por partido | 4,6 | 9,9 | hipótesis: 9-10 |
+| Rojas por partido | 0,53 | 0,19 | hipótesis: 0,2-0,25 |
+| Penaltis por partido | 0,23 | 0,33 | 0,34 (130 en la temporada) |
+
+Los datos de LaLiga 2024-25 (goles, resultados, penaltis) salen de los resultados publicados de la temporada; los marcados como «hipótesis» son valores de diseño aproximados, sin una fuente verificada, que se pueden recalibrar en `SIM.CAL`.
+
+**Limitaciones conocidas**: en el modo Visionado el partido lo decide el motor físico del campo 2D (`js/match.js`), que es otro modelo. Su media de goles es parecida, pero da más tiros a puerta y muy pocas faltas y fueras de juego. Igualarlos requiere que la animación represente los eventos de `sim.js` (siguiente fase). Los 0-0 (8,7 %) siguen algo por encima de los de la temporada real tomada como referencia.
+
 ## Controles (un solo botón, al estilo PC Fútbol 2.0)
 
 | Acción | Teclado | Táctil |

@@ -1,0 +1,179 @@
+{
+ "tag": "despues",
+ "reps": 10,
+ "date": "2026-10-22T20:22:41.243Z",
+ "A_primera": {
+  "partidos": 3800,
+  "goles": 2.58,
+  "golesLocal": 1.46,
+  "golesVisit": 1.11,
+  "local": 44.9,
+  "empate": 26.6,
+  "visitante": 28.5,
+  "cero_cero": 8.7,
+  "margen3": 15,
+  "margen4": 5.2,
+  "marcadores": "1-1 12.8%, 1-0 11%, 0-0 8.7%, 2-0 8.4%, 2-1 7.6%, 0-1 7.5%, 1-2 5.9%, 0-2 5.1%, 3-1 4.7%, 2-2 4.4%",
+  "tirosEquipo": 11.3,
+  "aPuertaEquipo": 4,
+  "bloqueadosEquipo": 2.7,
+  "conversion": 11.4,
+  "golesPorAPuerta": 32.3,
+  "xgPartido": 2.64,
+  "corners": 9.9,
+  "faltas": 26.3,
+  "amarillas": 4.88,
+  "rojas": 0.19,
+  "penaltis": 0.33,
+  "pases": 461,
+  "aciertoPase": 83.2,
+  "fuerasJuego": 4.1,
+  "posesionDesvMedia": 10.3,
+  "campeonPts": 90.4,
+  "colistaPts": 22.8,
+  "porDiferencia": [
+   "-15: 4/16/80 (n50)",
+   "-12: 11.5/22/66.5 (n200)",
+   "-9: 15.9/22.7/61.4 (n220)",
+   "-6: 23.8/30.3/45.9 (n370)",
+   "-3: 35.4/30.3/34.2 (n590)",
+   "0: 45.6/29.7/24.7 (n940)",
+   "+3: 52.2/31.2/16.6 (n590)",
+   "+6: 64.6/22.7/12.7 (n370)",
+   "+9: 72.3/19.1/8.6 (n220)",
+   "+12: 83.5/13/3.5 (n200)",
+   "+15: 92/8/0 (n50)"
+  ],
+  "incoherencias": 0,
+  "ejemplos": []
+ },
+ "A_segunda": {
+  "partidos": 2310,
+  "goles": 2.42,
+  "golesLocal": 1.37,
+  "golesVisit": 1.05,
+  "local": 44.1,
+  "empate": 27.4,
+  "visitante": 28.5,
+  "cero_cero": 9.6,
+  "margen3": 10.8,
+  "margen4": 3,
+  "marcadores": "1-1 13.1%, 1-0 13%, 0-1 9.8%, 0-0 9.6%, 2-1 8.1%, 2-0 7.6%, 1-2 5.9%, 0-2 5.1%, 2-2 3.9%, 3-1 3.8%",
+  "tirosEquipo": 11.1,
+  "aPuertaEquipo": 4,
+  "bloqueadosEquipo": 2.3,
+  "conversion": 10.9,
+  "golesPorAPuerta": 29.9,
+  "xgPartido": 2.18,
+  "corners": 9.3,
+  "faltas": 26.7,
+  "amarillas": 4.4,
+  "rojas": 0.16,
+  "penaltis": 0.29,
+  "pases": 446,
+  "aciertoPase": 73.3,
+  "fuerasJuego": 3.7,
+  "posesionDesvMedia": 9,
+  "campeonPts": 89.8,
+  "colistaPts": 27.4,
+  "porDiferencia": [
+   "-12: 12.5/30/57.5 (n40)",
+   "-9: 17.4/29/53.5 (n155)",
+   "-6: 27/30/43 (n200)",
+   "-3: 28.6/33.1/38.3 (n420)",
+   "0: 43.3/29.4/27.3 (n660)",
+   "+3: 56/25.2/18.8 (n420)",
+   "+6: 73/17.5/9.5 (n200)",
+   "+9: 65.8/23.9/10.3 (n155)",
+   "+12: 85/7.5/7.5 (n40)"
+  ],
+  "incoherencias": 0,
+  "ejemplos": []
+ },
+ "C_tacticas": {
+  "base": {
+   "ptsPorPartido": 1.74,
+   "gf": 1.59,
+   "gc": 1.1,
+   "tiros": 13.2,
+   "tirosRival": 10.9,
+   "posesion": 52.5
+  },
+  "ofensiva": {
+   "ptsPorPartido": 1.76,
+   "gf": 1.71,
+   "gc": 1.17,
+   "tiros": 13.8,
+   "tirosRival": 11.5,
+   "posesion": 53.9
+  },
+  "defensiva": {
+   "ptsPorPartido": 1.71,
+   "gf": 1.41,
+   "gc": 0.94,
+   "tiros": 12.3,
+   "tirosRival": 9.8,
+   "posesion": 49.2
+  },
+  "presionAlta": {
+   "ptsPorPartido": 1.63,
+   "gf": 1.54,
+   "gc": 1.15,
+   "tiros": 13.2,
+   "tirosRival": 11.2,
+   "posesion": 54.7
+  },
+  "corto": {
+   "ptsPorPartido": 1.74,
+   "gf": 1.62,
+   "gc": 1.09,
+   "tiros": 13.4,
+   "tirosRival": 10.9,
+   "posesion": 57.1
+  },
+  "largo": {
+   "ptsPorPartido": 1.74,
+   "gf": 1.63,
+   "gc": 1.13,
+   "tiros": 13.5,
+   "tirosRival": 11,
+   "posesion": 48.2
+  }
+ },
+ "D_fatiga": {
+  "descansado": {
+   "pts": 1.72,
+   "gf": 1.48,
+   "gc": 0.98
+  },
+  "forma85": {
+   "pts": 1.57,
+   "gf": 1.32,
+   "gc": 1.07
+  },
+  "forma70": {
+   "pts": 1.36,
+   "gf": 1.15,
+   "gc": 1.17
+  }
+ },
+ "E_porteros": {
+  "peor12": {
+   "golesEncajados": 1.08,
+   "paradas": 2.5
+  },
+  "igual": {
+   "golesEncajados": 0.97,
+   "paradas": 2.5
+  },
+  "mejor12": {
+   "golesEncajados": 0.79,
+   "paradas": 2.6
+  }
+ },
+ "H_estabilidad": {
+  "partidosPorTramos": 300,
+  "errores": 0
+ },
+ "segundos": 19
+}
