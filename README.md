@@ -79,6 +79,12 @@ Los datos de LaLiga 2024-25 (goles, resultados, penaltis) salen de los resultado
 - **Papeles en el córner**: cada jugador tiene uno (rematador, arrastre, segundo rematador, llegada desde segunda línea, rechace, vigilancia, marcaje, primer palo, borde del área, contraataque).
 - **Colocación sin teletransportes**: los jugadores llegan corriendo a sus puestos y el saque espera a que estén colocados. Después del centro, los atacantes atacan su zona y los defensores siguen su marca o su zona.
 - **Movimiento**: aceleración propia de cada jugador (velocidad y cansancio), separación también entre rivales, giro progresivo, carrera hacia atrás de cara al balón y pasos laterales al bascular. El que salta a rematar de cabeza se ve en el aire.
+- **Sin saltos del balón**: el balón nunca aparece de golpe en otra zona. Si la simulación decide un gol, el equipo construye la jugada con pases (o roba el balón con un pase fallado del rival) hasta que el goleador llega a una zona de disparo; los goles de balón parado solo se escenifican si la falta o el córner ocurren en su zona.
+- **Balón fuera**: en saques de puerta, córners y bandas, el balón cruza la línea y sigue rodando antes de que se reanude el juego.
+- **Tarjetas con motivo**: el jugador amonestado comete una entrada a destiempo (con segada si llega tarde) y el árbitro pita falta antes de mostrar la tarjeta. Si no hay ocasión de hacer la falta, la tarjeta se enseña en una parada del juego como amonestación por protestar.
+- **Fueras de juego**: los de la simulación se ven en el campo (pase al delantero adelantado, bandera y libre indirecto).
+- **Sorteo de campo**: la moneda sale cara o cruz al 50 %, así que el rival también puede ganarlo.
+- **Sin bloqueos**: hay vigilancia contra partidos parados. Fuerza la reanudación si el saque se atasca, quita el balón a un jugador sustituido o expulsado y cancela jugadas preparadas que no avanzan.
 - **Táctica en el campo**: el jugador que presiona mantiene la presión salvo que otro esté claramente mejor situado, y el centro del campo se mantiene compacto sin balón. Los saques de puerta salen en corto o en largo según el tipo de pase elegido.
 
 **Limitaciones conocidas**: los 0-0 (8,7 %) siguen algo por encima de los de la temporada real tomada como referencia. En Visionado, un gol puede verse uno o dos minutos después del minuto en que lo decide la simulación.

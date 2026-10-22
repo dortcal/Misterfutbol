@@ -345,7 +345,7 @@
         const mult = (1 - red * 0.14) * (1 + redO * 0.16) * (m > 90 ? 0.85 : m > 75 ? 1.08 : 1) * fat * state * exposed;
         if (R() < sd.shotRate * mult) shot(s, m, pickW(Object.keys(sd.mix), (k) => sd.mix[k]));
         if (R() < sd.cornerRate * mult) corner(s, m);
-        if (R() < sd.offRate) S.offsides[s]++;
+        if (R() < sd.offRate) { S.offsides[s]++; res.events.push({ type: 'offside', side: s, min: m }); }
         if (R() < C.OWN_GOAL / 90 * (M.lam[s] / C.LAM_REF)) {
           const pid = R.pick(onPitch[o].filter((id) => w.players[id].line === 'DEF').concat(onPitch[o])); res.score[s]++;
           res.events.push({ type: 'goal', side: s, min: m, pid, own: true });

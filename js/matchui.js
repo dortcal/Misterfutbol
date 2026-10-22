@@ -25,8 +25,8 @@
       case 'save': return pick(['¡Paradón de ' + P(ev.pid) + '!', 'Mano salvadora de ' + P(ev.pid) + '.', '¡Qué reflejos de ' + P(ev.pid) + '!', P(ev.pid) + ' saca una mano providencial.']);
       case 'catch': return pick(['Blocaje seguro de ' + P(ev.pid) + '.', P(ev.pid) + ' atrapa el balón sin problemas.']);
       case 'post': return pick(['¡Al palo! ¡Uyyy!', '¡La madera lo evita!', '¡El poste escupe el balón!']);
-      case 'yellow': return 'Tarjeta amarilla para ' + P(ev.pid) + '.';
-      case 'red': return '¡Roja! ' + P(ev.pid) + ' se va a la calle.';
+      case 'yellow': return ev.reason === 'protestar' ? 'Tarjeta amarilla para ' + P(ev.pid) + ' por protestar.' : 'Tarjeta amarilla para ' + P(ev.pid) + '.';
+      case 'red': return ev.reason === 'protestar' ? '¡Roja directa a ' + P(ev.pid) + ' por encararse con el árbitro!' : '¡Roja! ' + P(ev.pid) + ' se va a la calle.';
       case 'foul': return ev.sev > 0.5 ? pick(['¡Segada durísima de ' + P(ev.pid) + '!', '¡Qué entrada de ' + P(ev.pid) + '! El árbitro saca la tarjeta del bolsillo…']) : pick(['Falta de ' + P(ev.pid) + '.', 'El árbitro pita falta.', 'Entrada dura de ' + P(ev.pid) + '.']);
       case 'penalty': return '¡PENALTI a favor del ' + T(ev.side) + '!';
       case 'offside': return 'Fuera de juego de ' + P(ev.pid) + '.';
@@ -116,7 +116,7 @@
       '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="call" data-c="cara" data-key="c" autofocus><span class="n">C</span><span class="t">Cara</span></button><button class="bar gold" data-act="call" data-c="cruz" data-key="x"><span class="n">X</span><span class="t">Cruz</span></button></nav></div>',
       {
         call: (el) => {
-          const call = el.dataset.c; const side = U.R() < 0.5 ? 'cara' : 'cruz'; MUI._side = side;
+          const call = el.dataset.c; const side = Math.random() < 0.5 ? 'cara' : 'cruz'; MUI._side = side;   // 50 %: independiente de cualquier semilla
           document.querySelectorAll('[data-act=call]').forEach((b) => { b.disabled = true; });
           const c = document.getElementById('coin'); c.classList.add('flip-' + side); A.sfxPlay('click');
           setTimeout(() => {

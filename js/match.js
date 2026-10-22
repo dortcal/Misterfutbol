@@ -48,7 +48,7 @@
     this.director = this.human < 0 && cfg.director !== false && !!MF.SIM;
     if (this.director) {
       this.dR = U.rng(((cfg.seed || 7) * 2654435761) >>> 0);
-      this.pend = []; this.dmin = 0; this.spQ = [];
+      this.pend = []; this.dmin = 0; this.spQ = []; this.cardQ = [];
       this.dres = MF.SIM.play(world, this.simOpts(0, 0));
     }
   }
@@ -87,8 +87,8 @@
       }
       if (e.type === 'corner' || e.type === 'freekick') { this.spQ.push({ type: e.type === 'corner' ? 'corner' : e.zone, side: e.side, min: e.min, shot: !!e.shot, wait: 0 }); return; }
       const p = e.pid ? find(e.side, e.pid) : null;
-      if (e.type === 'yellow' && p) { p.yel = 1; this.events.push(e); this.say('yellow', { pid: e.pid, side: e.side }); }
-      if (e.type === 'red' && p) { if (e.second) p.yel = 1; this.events.push(e); this.say('red', { pid: e.pid, side: e.side }); this.sendOff(p); }
+      if ((e.type === 'yellow' || e.type === 'red') && p) { this.cardQ.push({ e, wait: 0 }); return; }
+      if (e.type === 'offside') { this.spQ.push({ type: 'offside', side: e.side, min: e.min, wait: 0 }); return; }
       if (e.type === 'injury' && p) { p.injured = true; this.events.push(e); this.say('injury', { pid: e.pid, side: e.side }); }
       if (e.type === 'sub') { const out = find(e.side, e.out); if (out) { this._fromSim = true; this.substitute(e.side, out, e.pid); this._fromSim = false; } }
     });
@@ -99,40 +99,97 @@
   // ¿puede acabar la parte? (sin goles pendientes de mostrar y con la simulación al día)
   MP.directorReady = function (limit) { return !this.director || (!this.pend.length && this.dmin >= limit); };
   // lleva al campo el siguiente gol de la simulación
+  // El gol de la simulación se construye siempre con jugadas que se ven: robo, pases hacia el goleador y remate.
+  // Los córners, faltas y penaltis se pitan donde está el atacante (nunca se teletransporta el balón).
   MP.directorPlay = function (dt) {
+    if (this.phase !== 'play') return;
+    this.stageCards(dt);
     if (this.phase !== 'play') return;
     const g = this.pend[0]; if (!g) { this.stageSetPiece(dt); return; }
     g.wait += dt * this.minPerSec; g.cd = (g.cd || 0) - dt;
     const s = g.side; const b = this.ball;
     const sc = this.scriptShooter(g);
     if (!sc) return;
-    // si la jugada ensayada no cuaja en unos segundos, el gol llega con una falta frontal
-    if (g.placed && g.t0 && !g.attached && this.realT - g.t0 > 4 && g.setp === 'corner') { g.t0 = this.realT; this.placeCorner(s, b.y); return; }   // el balón no salió: córner directo
-    if (g.placed && g.t0 && this.realT - g.t0 > (g.attached ? 16 : 9)) { g.setp = null; g.placed = false; g.t0 = 0; g.attached = false; g.wait = 2.4; }
-    const owner = b.owner; const attacking = owner && owner.side === s && !owner.isGK && this.ax(s, owner.x) > 0.66;
-    if ((g.setp === 'corner' || g.setp === 'lateral' || g.setp === 'directa' || g.setp === 'barrera') && !g.placed) {
-      if (!attacking && g.wait < 1.2) return;
-      g.placed = true; g.t0 = this.realT;
-      if (g.setp === 'corner') { if (attacking) this.forceCornerOut(owner); else this.placeCorner(s, b.y); }
-      else if (g.setp === 'lateral') this.placeFree(s, 'lateral', attacking ? owner : null);
-      else { this.placeFree(s, 'frontal', attacking ? owner : null); this.setTaker(sc); this.restart.script = g; }
+    if (g.placed && g.t0 && !g.attached && g.setp === 'corner' && this.realT - g.t0 > 4) { g.placed = false; g.t0 = 0; }   // el balón no llegó a salir: otra vez
+    if (g.placed && g.t0 && this.realT - g.t0 > (g.attached ? 16 : 9)) { g.setp = null; g.placed = false; g.t0 = 0; g.attached = false; }
+    if (g.placed) return;   // esperando a que se juegue la jugada a balón parado
+    if (g.wait > 10) { g.setp = null; g.pen = false; }   // si no hay manera, el gol llega en jugada
+    const owner = b.owner; const att = owner && owner.side === s && !owner.isGK;
+    const ax = att ? this.ax(s, owner.x) : 0; const dGoal = att ? U.dist(owner.x, owner.y, this.oppGoalX(s), PW / 2) : 99; const wide = att ? Math.abs(owner.y - PW / 2) : 0;
+    const late = g.wait > 5;   // si tarda mucho, se aceptan zonas algo menos ideales
+    if (g.pen) {
+      if (att && dGoal < (late ? 24 : 19) && wide < 18) {
+        g.placed = true; g.t0 = this.realT; owner.state = 'down'; owner.stateT = 1.2;
+        this.stats.fouls[1 - s]++; this.say('foul', { side: 1 - s, pid: null }); if (this.hooks.sound) this.hooks.sound('whistle', this);
+        this.say('penalty', { side: s }); this.place('penalty', s, this.oppGoalX(s) - this.dir[s] * 11, PW / 2); this.setTaker(sc); this.restart.script = g;
+      } else this.buildAttack(g, sc);
       return;
     }
-    if (g.placed && g.setp) return;   // esperando a que se juegue la jugada a balón parado
+    if (g.setp === 'corner' || g.setp === 'lateral' || g.setp === 'directa' || g.setp === 'barrera') {
+      const ok = att && (g.setp === 'corner' ? ax > (late ? 0.6 : 0.66) : g.setp === 'lateral' ? Math.abs(owner.x - this.oppGoalX(s)) < (late ? 28 : 23) && wide > (late ? 12 : 15) : dGoal > 16 && dGoal < (late ? 33 : 28) && wide < 17);
+      if (ok) {
+        g.placed = true; g.t0 = this.realT;
+        if (g.setp === 'corner') this.forceCornerOut(owner);
+        else if (g.setp === 'lateral') this.placeFree(s, 'lateral', owner);
+        else { this.placeFree(s, 'frontal', owner); this.setTaker(sc); this.restart.script = g; }
+      } else this.buildAttack(g, sc);
+      return;
+    }
     if (g.setp === 'regate' && b.owner === sc) return;   // lo resuelve el regate al portero (ownerDecision)
-    if (g.pen && !g.placed) { g.placed = true; this.say('penalty', { side: s }); this.place('penalty', s, this.oppGoalX(s) - this.dir[s] * 11, PW / 2); this.setTaker(sc); this.restart.script = g; return; }
     if (b.owner === sc && U.dist(sc.x, sc.y, this.oppGoalX(s), PW / 2) < 24) { this.scriptShot(sc, g); return; }
-    sc.runX = this.oppGoalX(s) - this.dir[s] * (11 + (g.wait * 3) % 5); sc.runY = PW / 2 + (sc.slot % 2 ? 5 : -5); sc.runT = 0.6;
-    if (b.owner && b.owner.side === s && b.owner !== sc && !b.owner.isGK && this.ax(s, b.owner.x) > 0.42 && g.cd <= 0) {
-      g.cd = 0.8; const far = U.dist(b.owner.x, b.owner.y, sc.x, sc.y) > 20;
-      this.pass(b.owner, sc, sc.x + this.dir[s] * 2, sc.y, far); return;
+    this.buildAttack(g, sc);
+  };
+  // lleva el balón hacia el goleador con acciones visibles
+  MP.buildAttack = function (g, sc) {
+    const s = g.side; const b = this.ball; const owner = b.owner; const dir = this.dir[s]; const gx = this.oppGoalX(s);
+    sc.runX = gx - dir * (11 + (g.wait * 3) % 5); sc.runY = PW / 2 + (sc.slot % 2 ? 5 : -5); sc.runT = 0.6;
+    if (!owner || g.cd > 0) return;
+    if (owner.side !== s) {
+      // el rival pierde el balón: un pase que intercepta un jugador del equipo que va a marcar
+      if (g.wait < 0.4) return;
+      const ahead = [owner.x + this.dir[owner.side] * 9, owner.y];
+      const r = this.active(s).filter((q) => !q.isGK).sort((a, c) => U.dist(a.x, a.y, ahead[0], ahead[1]) - U.dist(c.x, c.y, ahead[0], ahead[1]))[0];
+      if (r) { g.cd = 1.4; this.pass(owner, r, r.x, r.y, U.dist(owner.x, owner.y, r.x, r.y) > 22); this.say('steal', { pid: r.d.id, side: s }); }
+      return;
     }
-    // si la jugada no llega, falta peligrosa a favor y el gol llega a balón parado
-    if (g.wait > 2.4 && !g.placed) {
-      g.placed = true;
-      this.place('free', s, this.oppGoalX(s) - this.dir[s] * (19 + this.R() * 4), PW / 2 + (this.R() - 0.5) * 16);
-      this.setTaker(sc); this.restart.script = g;
+    if (owner === sc) return;   // el goleador conduce hacia la portería (ownerDecision)
+    const dSc = U.dist(owner.x, owner.y, sc.x, sc.y);
+    let r = sc;
+    if (dSc > 30) {   // pase intermedio a un compañero más adelantado
+      const mates = this.active(s).filter((q) => q !== owner && !q.isGK && U.dist(q.x, q.y, owner.x, owner.y) < 30 && this.ax(s, q.x) > this.ax(s, owner.x) + 0.03);
+      mates.sort((a, c) => U.dist(a.x, a.y, sc.x, sc.y) - U.dist(c.x, c.y, sc.x, sc.y));
+      if (mates[0]) r = mates[0];
     }
+    g.cd = 0.9; const far = U.dist(owner.x, owner.y, r.x, r.y) > 20;
+    this.pass(owner, r, r.x + dir * 2, r.y, far);
+  };
+  // tarjetas de la simulación: el amonestado comete antes la falta (o protesta en una interrupción)
+  MP.stageCards = function (dt) {
+    this.cardQ.forEach((q) => { q.wait += dt * this.minPerSec; if (q.wait > 10) q.protest = true; });
+    const c = this.cardQ.find((q) => !q.protest); if (!c) return;
+    const e = c.e; const p = this.P[e.side].find((q) => q.d.id === e.pid && !q.off);
+    const drop = () => { const i = this.cardQ.indexOf(c); if (i >= 0) this.cardQ.splice(i, 1); };
+    if (!p) { drop(); return; }
+    const b = this.ball; const o = b.owner;
+    if (o && o.side !== e.side && !o.isGK && U.dist(p.x, p.y, o.x, o.y) < 32) {
+      p.foulTarget = o; const d = U.dist(p.x, p.y, o.x, o.y);
+      this._chaseNear = d < 6;
+      if (d < 4.6) {   // entrada a destiempo: segada y falta
+        if (d > 1.6) this.startSlide(p, Math.atan2(o.y - p.y, o.x - p.x), 0.6);
+        drop(); p.foulTarget = null; this._chaseNear = false; this.foul(p, o, e.type === 'red', e.type === 'red' ? 0.9 : 0.4); this.applyCard(e, p); }
+    } else { p.foulTarget = null; this._chaseNear = false; }
+  };
+  // en las interrupciones, las tarjetas pendientes (por protestar)
+  MP.protestCards = function (all) {
+    if (!this.director || !this.cardQ.length) return;
+    this.cardQ.filter((c) => c.protest || all).forEach((c) => {
+      this.cardQ.splice(this.cardQ.indexOf(c), 1);
+      const p = this.P[c.e.side].find((q) => q.d.id === c.e.pid && !q.off); if (p) { p.foulTarget = null; this.applyCard(c.e, p, 'protestar'); }
+    });
+  };
+  MP.applyCard = function (e, p, reason) {
+    if (e.type === 'yellow') { p.yel = 1; this.events.push(e); this.say('yellow', { pid: e.pid, side: e.side, reason }); }
+    else { if (e.second) p.yel = 1; this.events.push(e); this.say('red', { pid: e.pid, side: e.side, reason }); this.sendOff(p); }
   };
   // ---- jugadas a balón parado de la simulación que no acaban en gol
   MP.stageSetPiece = function (dt) {
@@ -141,11 +198,16 @@
     sp.wait += dt * this.minPerSec;
     const b = this.ball; const s = sp.side; const owner = b.owner;
     if (sp.forced) { if (this.realT - sp.forced > 3) this.spQ.shift(); return; }   // el balón no salió: se descarta
-    const attacking = owner && owner.side === s && !owner.isGK && this.ax(s, owner.x) > 0.66;
-    if (!attacking && sp.wait < 1.2) return;
-    if (sp.type === 'corner') { if (attacking) { sp.forced = this.realT; this.forceCornerOut(owner); } else { this.spQ.shift(); this.placeCorner(s, b.y); } return; }
-    this.spQ.shift();
-    this.placeFree(s, sp.type, attacking ? owner : null);
+    const att = owner && owner.side === s && !owner.isGK; const ax = att ? this.ax(s, owner.x) : 0;
+    if (!att) return;
+    const dGoal = U.dist(owner.x, owner.y, this.oppGoalX(s), PW / 2); const wide = Math.abs(owner.y - PW / 2);
+    if (sp.type === 'corner') { if (ax > 0.66) { sp.forced = this.realT; this.forceCornerOut(owner); } return; }
+    if (sp.type === 'lateral') { if (Math.abs(owner.x - this.oppGoalX(s)) < 23 && wide > 15) { this.spQ.shift(); this.placeFree(s, 'lateral', owner); } return; }
+    if (sp.type === 'frontal') { if (dGoal > 16 && dGoal < 30 && wide < 17) { this.spQ.shift(); this.placeFree(s, 'frontal', owner); } return; }
+    if (sp.type === 'offside' && ax > 0.45 && ax < 0.85) {   // pase al delantero más adelantado, que estaba en fuera de juego
+      const r = this.active(s).filter((q) => q !== owner && !q.isGK).sort((a, c) => this.ax(s, c.x) - this.ax(s, a.x))[0];
+      if (r && this.ax(s, r.x) > ax) { this.spQ.shift(); r.runX = this.oppGoalX(s) - this.dir[s] * 12; r.runY = r.y; r.runT = 1; this.pass(owner, r, r.x + this.dir[s] * 4, r.y, false); this.ball.offside = r; }
+    }
   };
   // un disparo o centro que toca en un defensa y sale por la línea de fondo
   MP.forceCornerOut = function (p) {
@@ -221,7 +283,7 @@
     if (how === 'header') { b.owner = null; b.z = z0; p.state = 'jump'; p.stateT = 0.4; this.say('header', { pid: p.d.id, side: s }); }
     this.kick(p, Math.cos(a) * speed, Math.sin(a) * speed, vz, 'shot', null);
     if (how === 'header') p.state = 'jump';
-    this.ball.script = g; p.face = a;
+    this.ball.script = g; this.ball.scriptT = this.realT; p.face = a;
     if (gk) { gk.diveDir = -side; }
   };
 
@@ -404,8 +466,22 @@
     if (this.half === 3 && this.t >= 105 && this.phase === 'play' && this.safeToStop() && this.directorReady(105)) { this.say('et_half', {}); this.phase = 'halftime'; this.phaseT = 2; this.half = 3.5; return; }
     if (this.half === 4 && this.t >= 120 && this.phase === 'play' && this.safeToStop() && this.directorReady(120)) { this.endExtra(); return; }
 
+    if (this.phase === 'dead') {
+      this.protestCards();
+      this.phaseT -= dt;
+      const k = Math.exp(-1.6 * dt); b.vx *= k; b.vy *= k; b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.z > 0 || b.vz > 0) { b.vz -= GRAV * dt; b.z = Math.max(0, b.z + b.vz * dt); if (b.z === 0) b.vz = 0; }
+      b.x = U.clamp(b.x, -9, PL + 9); b.y = U.clamp(b.y, -7, PW + 7);
+      this.moveAll(dt, true);
+      if (this.phaseT <= 0) { const n = this.deadNext; this.deadNext = null; this.phase = 'play'; this.place(n[0], n[1], n[2], n[3]); }
+      return;
+    }
     if (this.phase === 'kickoff' || this.phase === 'restart') {
       this.phaseT -= dt;
+      // seguro: un saque nunca se queda esperando para siempre
+      if (this.restartT0 === undefined || this._rsRef !== this.restart) { this._rsRef = this.restart; this.restartT0 = this.realT; }
+      if (this.realT - this.restartT0 > 9 && this.restart) { b.owner = this.restart.taker; this.executeRestart(); return; }
+      if (this.realT - this.restartT0 > 0.4) this.protestCards();
       this.thinkPositions(dt, true);
       this.moveAll(dt, true);
       const tk = this.restart && this.restart.taker; if (tk) { b.x = this.restart.type === 'kickoff' ? PL / 2 : this.restart.x; b.y = this.restart.type === 'kickoff' ? PW / 2 : this.restart.y; b.z = 0; }
@@ -415,6 +491,14 @@
     }
 
     // juego en curso
+    if (b.owner && (b.owner.off || this.P[b.owner.side].indexOf(b.owner) < 0)) b.owner = null;
+    const still = Math.abs(b.vx) + Math.abs(b.vy) < 0.05 && (!b.owner || Math.hypot(b.owner.vx, b.owner.vy) < 0.2);
+    this._stillT = still ? (this._stillT || 0) + dt : 0;
+    if (this._stillT > 4) {   // nadie mueve el balón: el poseedor despeja o el más cercano lo recoge
+      this._stillT = 0;
+      if (b.owner && !b.owner.isGK) this.longBall(b.owner);
+      else if (!b.owner) { const q = this.all().filter((x) => !x.isGK).sort((a, c) => U.dist(a.x, a.y, b.x, b.y) - U.dist(c.x, c.y, b.x, b.y))[0]; if (q) { q.tx = b.x; q.ty = b.y; q.want = 1; this.computeChasers(); } }
+    }
     if (b.owner) this.stats.possT[b.owner.side] += dt; else if (b.last) this.stats.possT[b.last.side] += dt * 0.5;
     this.chaseTimer -= dt; if (this.chaseTimer <= 0) { this.computeChasers(); this.chaseTimer = 0.1; }
     this.updateControl();
@@ -439,6 +523,7 @@
   };
 
   MP.endHalf = function () {
+    this.protestCards(true);
     this.say('halftime', {}); this.phase = 'halftime'; this.phaseT = 2.5; this.half = 1.5;
   };
   MP.startSecondHalf = function () {
@@ -477,6 +562,7 @@
   };
   MP.finishShootout = function (p) { this.pens = p; this.endMatch(); };
   MP.endMatch = function () {
+    this.protestCards(true);
     this.phase = 'end'; this.t = this.half >= 3 ? 120 : 90 + this.added[1];
     this.say('end', {});
     if (this.hooks.end) this.hooks.end(this.result(), this);
@@ -562,6 +648,7 @@
         if (p === this.ctrl && !setPiece && p.humanMove) continue;
         if (owner === p) continue;
         if (p.isGK) { this.gkPosition(p); continue; }
+        if (p.foulTarget && !setPiece && !p.foulTarget.off) { p.tx = p.foulTarget.x; p.ty = p.foulTarget.y; p.want = 1; continue; }
         if (!setPiece && this.chasers[s] === p && !owner) { const c = this.chasePt[s]; p.tx = c[0]; p.ty = c[1]; p.want = 1; continue; }
         // posición zonal
         let ax = p.hx + shift * (p.line === 'DEF' ? 0.85 : p.line === 'MED' ? 1 : 0.8);
@@ -632,6 +719,9 @@
     if (this._pressCache[key] !== undefined) return this._pressCache[key];
     const c = this.active(s).filter((p) => !p.isGK && p !== this.ctrl).sort((a, b) => U.dist(a.x, a.y, carrier.x, carrier.y) - U.dist(b.x, b.y, carrier.x, carrier.y));
     let pick = c[rank] || null;
+    // el jugador que va a ver una tarjeta presiona al poseedor (y acabará haciendo la falta)
+    const cq = this.director && rank === 0 && this.cardQ && this.cardQ[0] && !this.cardQ[0].protest && this.cardQ[0].e.side === s ? this.cardQ[0].e.pid : null;
+    if (cq) { const cp = c.find((q) => q.d.id === cq); if (cp && U.dist(cp.x, cp.y, carrier.x, carrier.y) < 32) { this._pressCache[key] = cp; return cp; } }
     // persistencia: quien ya presiona sigue haciéndolo salvo que otro esté claramente mejor situado
     this._pressLock = this._pressLock || {};
     const L = this._pressLock[key];
@@ -1281,8 +1371,10 @@
     if (c.isGK && this.inBox(c.side, c.x, c.y)) return; // nadie puede entrar al portero con el balón en las manos
     const hc = this.ctrl;
     if (hc && hc.side !== c.side && hc.state === 'slide' && !hc.slideDone && U.dist(hc.x, hc.y, c.x, c.y) < 2.1) { hc.slideDone = true; this.tryTackle(hc, c, true, true); if (b.owner !== c) return; }
+    const chase = this.director && this.cardQ && this.cardQ[0] && this.cardQ[0].e.side === 1 - c.side ? this.cardQ[0].e.pid : null;
     for (const p of this.P[1 - c.side]) {
       if (p.off || p.isGK || p === this.ctrl || p.tackleCd > 0) continue;
+      if (chase && (p.d.id === chase || this._chaseNear)) continue;   // la entrada (en falta) la hace el que va a ver la tarjeta
       const d = U.dist(p.x, p.y, c.x, c.y);
       if (d < 1.35) { this.tryTackle(p, c, false); if (b.owner !== c) return; }
     }
@@ -1351,6 +1443,7 @@
   MP.sendOff = function (p) {
     p.off = true; p.x = -20; p.y = -20;
     if (this.ball.owner === p) this.ball.owner = null;
+    if (this.restart && this.restart.taker === p) { const q = this.active(p.side).filter((x) => !x.isGK).sort((a, c) => U.dist(a.x, a.y, this.restart.x, this.restart.y) - U.dist(c.x, c.y, this.restart.x, this.restart.y))[0]; if (q) { this.restart.taker = q; q.tx = this.restart.x; q.ty = this.restart.y; } }
     if (this.ctrl === p) this.ctrl = null;
     if (p.isGK) { // un jugador de campo pasa a la portería
       const cand = this.active(p.side).filter((q) => !q.isGK).sort((a, b) => a.d.ovr - b.d.ovr)[0];
@@ -1398,6 +1491,9 @@
     const idx = this.P[s].indexOf(out);
     this.P[s][idx] = np;
     if (this.ball.owner === out) this.ball.owner = np;
+    if (this.restart && this.restart.taker === out) { this.restart.taker = np; np.x = out.x; np.y = out.y; }
+    if (this.cornerCtx) { const pl = this.cornerCtx.plan; ['pos', 'role', 'run', 'mark'].forEach((k) => { if (pl[k].has(out)) { pl[k].set(np, pl[k].get(out)); pl[k].delete(out); } }); if (pl.target === out) pl.target = np; }
+    if (this.restart && this.restart.plan) { const pl = this.restart.plan; ['pos', 'role', 'run', 'mark'].forEach((k) => { if (pl[k].has(out)) { pl[k].set(np, pl[k].get(out)); pl[k].delete(out); } }); if (pl.target === out) pl.target = np; }
     if (this.ctrl === out) this.ctrl = np;
     this.subsIn[s].push(inP.id); this.subsLeft[s]--;
     this.subbedOut = this.subbedOut || [[], []]; this.subbedOut[s].push(out.d.id);
@@ -1467,6 +1563,10 @@
   MP.ballPhysics = function (dt) {
     const b = this.ball;
     b.kickCd -= dt;
+    // un guion que no ha acabado en gol (balón frenado o demasiado tiempo) se cancela: el gol se volverá a intentar
+    if (b.script && !b.owner && (this.realT - (b.scriptT || 0) > 3.5 || (Math.hypot(b.vx, b.vy) < 1.5 && b.z < 0.3 && this.realT - (b.scriptT || 0) > 0.6))) { b.script = null; b.type = 'loose'; this.computeChasers(); }
+    if (b.scriptCross && !b.owner && Math.hypot(b.vx, b.vy) < 1 && b.z < 0.2) { b.scriptCross = null; b.type = 'loose'; this.computeChasers(); }
+    if (b.cornerOut && !b.owner && Math.hypot(b.vx, b.vy) < 2) { b.cornerOut = false; b.type = 'loose'; this.computeChasers(); }   // se frenó antes de salir
     if (b.owner) {
       const p = b.owner;
       b.x = p.x + Math.cos(p.face) * 0.55; b.y = p.y + Math.sin(p.face) * 0.55; b.z = 0;
@@ -1688,21 +1788,26 @@
         if (this.director) { const i = this.spQ.findIndex((q) => q.type === 'corner' && q.side === 1 - defSide); if (i >= 0) this.spQ.splice(i, 1); }
         this.stats.corners[1 - defSide]++;
         this.say('corner', { side: 1 - defSide });
-        this.place('corner', 1 - defSide, gx === 0 ? 0.3 : PL - 0.3, b.y < PW / 2 ? 0.3 : PW - 0.3);
+        this.deadBall('corner', 1 - defSide, gx === 0 ? 0.3 : PL - 0.3, b.y < PW / 2 ? 0.3 : PW - 0.3);
       } else {
         this.say('goalkick', { side: defSide });
         if (this.hooks.sound) this.hooks.sound('whistle', this);
-        this.place('goalkick', defSide, gx === 0 ? 5.5 : PL - 5.5, PW / 2 + (b.y < PW / 2 ? -9 : 9));
+        this.deadBall('goalkick', defSide, gx === 0 ? 5.5 : PL - 5.5, PW / 2 + (b.y < PW / 2 ? -9 : 9));
       }
       return;
     }
     if (b.y < 0 || b.y > PW) {
       const side = b.last ? 1 - b.last.side : 0;
       this.say('throw', { side });
-      this.place('throw', side, U.clamp(b.x, 1, PL - 1), b.y < 0 ? 0.2 : PW - 0.2);
+      this.deadBall('throw', side, U.clamp(b.x, 1, PL - 1), b.y < 0 ? 0.2 : PW - 0.2);
     }
   };
 
+  // balón fuera: se ve salir del campo y, un instante después, se prepara el saque
+  MP.deadBall = function (type, side, x, y) {
+    const b = this.ball; b.owner = null; b.target = null; b.type = 'out';
+    this.phase = 'dead'; this.phaseT = type === 'throw' ? 0.6 : 0.95; this.deadNext = [type, side, x, y];
+  };
   MP.goal = function (side) {
     const b = this.ball;
     let scorer = b.last; let own = false;
