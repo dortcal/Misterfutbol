@@ -36,6 +36,8 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Resumen de fin de temporada**: todos los campeones del año (Liga, Segunda, playoff, Copa, Supercopas, Champions, Europa League, Conference, Intercontinental y Mundial), tu balance, una nota de 1 a 5 estrellas con una frase divertida y una imagen de 1080 × 1350 para compartir en redes.
   - Temporadas sucesivas: los jugadores envejecen, progresan o declinan y se retiran; se generan canteranos.
   - **Canteranos reales**: además de los nombres generados, en las canteras aparecen los 165 convocados con las selecciones españolas sub-15, sub-16, sub-17, sub-18, sub-19 y sub-20 (listas de la RFEF de septiembre-octubre de 2026). Salen en su club cuando cumplen 16 años (los que juegan fuera de España, en cualquier club) y llevan la etiqueta 🇪🇸 de su categoría. Los que ya están en el juego no se repiten. Datos en `js/data/youth.js`.
+  - **Fin de carrera opcional** a partir de la 5ª temporada: resumen de toda tu trayectoria (clubes, palmarés, mejor temporada, temporada a temporada y una valoración de 1 a 5 estrellas como entrenador) con imagen para redes. Puedes seguir jugando o retirarte; en la partida de 2 jugadores, el otro sigue en solitario.
+  - **Clubes extranjeros vivos**: desde la tercera temporada sus jugadores envejecen y evolucionan, los veteranos se retiran y llegan jóvenes con nombres de su país.
   - Guardado automático en el navegador (3 ranuras) y exportación/importación de partidas.
 
 ## Controles (un solo botón, al estilo PC Fútbol 2.0)

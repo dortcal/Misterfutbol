@@ -658,9 +658,95 @@
       MGR.bracketHTML() +
       '<div class="panel"><b>Suben a Primera:</b> ' + h.promoted.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Segunda:</b> ' + h.relegated.map((id) => esc(T(id).name)).join(', ') + '<br><b>Bajan a Primera RFEF:</b> ' + h.down2.map((id) => esc(T(id).name)).join(', ') + '<br><b>Suben desde Primera RFEF:</b> ' + h.up3.map((id) => esc(T(id).name)).join(', ') + '</div>' +
       '<nav class="menu" style="max-width:none">' + (anyFired ? '<button class="bar red" data-act="next" autofocus><span class="n">!</span><span class="t">Reunión con la directiva</span></button>' : '<button class="bar gold" data-act="next" autofocus><span class="n">▶</span><span class="t">Empezar temporada ' + DB.SEASON_LABEL(h.season + 1) + '</span></button>') +
+      MGR.careerButtons() +
       '<button class="bar small grey" data-act="exit"><span class="n">0</span><span class="t">Guardar y salir</span></button></nav></div>',
-      { next: () => MGR.seasonNext(), exit: () => { save(); UI.mainMenu(); }, share: (el) => MGR.shareSeason(h, list[+el.dataset.j || 0].report) });
+      { career: (el) => { if (LG.isMulti(st)) LG.switchTo(st, +el.dataset.j); MGR.careerEnd(); }, next: () => MGR.seasonNext(), exit: () => { save(); UI.mainMenu(); }, share: (el) => MGR.shareSeason(h, list[+el.dataset.j || 0].report) });
   };
+  // ---------- FIN DE CARRERA (opcional desde la 5ª temporada)
+  MGR.careerButtons = function () {
+    const st = MGR.st; const idx = LG.isMulti(st) ? st.mgrs.map((m, i) => i) : [0];
+    return idx.map((j) => {
+      const c = LG.isMulti(st) ? LG.withMgr(st, j, () => LG.career(st)) : LG.career(st);
+      if (c.n < LG.CAREER_MIN) return '';
+      return '<button class="bar small" data-act="career" data-j="' + j + '"><span class="n">🏁</span><span class="t">Fin de carrera' + (LG.isMulti(st) ? ' de ' + esc(c.name) : '') + ' (opcional)</span><span class="meta">' + c.n + ' temporadas</span></button>';
+    }).join('');
+  };
+  MGR.careerEnd = function () {
+    const st = MGR.st; const c = LG.career(st);
+    const t = T(st.userTeam);
+    const order = Object.keys(MGR.TROPHY);
+    const tro = order.filter((k) => c.count[k]).map((k) => '<div class="champ"><span class="ico">' + MGR.TROPHY[k][0] + '</span><span><small>' + esc(MGR.TROPHY[k][1]) + '</small><b>× ' + c.count[k] + '</b></span></div>').join('');
+    const rows = c.seasons.map((x) => { const u = x.user, r = x.report; return '<tr' + (c.best && x.season === c.best.season ? ' class="me"' : '') + '><td>' + DB.SEASON_LABEL(x.season) + '</td><td>' + (T(u.team) ? GFX.badgeImg(T(u.team), 18) + ' ' + esc(T(u.team).short) : '') + '</td><td>' + (u.pos ? u.pos + 'º ' + (u.div === 1 ? '1ª' : '2ª') : '—') + (u.met ? ' ✓' : '') + '</td><td>' + (r ? '<span class="stars">' + '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars) + '</span>' : '') + '</td><td class="hide-sm">' + (r && r.titles.length ? r.titles.map((k) => (MGR.TROPHY[k] || ['🏆'])[0]).join(' ') : '') + '</td></tr>'; }).join('');
+    UI.show(UI.title('Fin de carrera') + '<div class="wrap">' +
+      '<div class="panel season-card"><div class="sc-head">' + GFX.badgeImg(t, 64) + '<div><h3 style="margin:0">' + esc(c.name) + ' · ' + c.n + ' temporadas (' + DB.SEASON_LABEL(c.from) + ' – ' + DB.SEASON_LABEL(c.to) + ')</h3><div class="sc-stars">' + '★'.repeat(c.legend) + '<span>' + '★'.repeat(5 - c.legend) + '</span></div><p class="sc-phrase">«' + esc(c.phrase) + '»</p></div></div>' +
+      '<div class="kv"><b>Clubes</b><span>' + c.clubs.filter((id) => T(id)).map((id) => GFX.badgeImg(T(id), 20) + ' ' + esc(T(id).short)).join(' · ') + '</span><b>Títulos</b><span>' + c.trophies.length + '</span><b>Nota media</b><span>' + c.avg.toFixed(1) + ' estrellas por temporada</span>' +
+      (c.best ? '<b>Mejor temporada</b><span>' + DB.SEASON_LABEL(c.best.season) + ' con el ' + esc(T(c.best.user.team) ? T(c.best.user.team).short : '') + (c.best.report ? ' (' + '★'.repeat(c.best.report.stars) + ')' : '') + '</span>' : '') + '</div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn goldb" data-act="share">📸 Crear imagen de mi carrera</button></div></div>' +
+      (tro ? '<div class="panel"><h3>Palmarés</h3><div class="champs">' + tro + '</div></div>' : '<div class="panel"><p style="margin:0">Sin títulos… ¡pero con mucha experiencia!</p></div>') +
+      '<div class="panel" style="padding:6px"><h3 style="margin:4px">Temporada a temporada</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Temporada</th><th>Club</th><th>Liga</th><th>Nota</th><th class="hide-sm">Títulos</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+      '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="keep" autofocus><span class="n">▶</span><span class="t">Seguir jugando</span></button>' +
+      '<button class="bar red" data-act="retire"><span class="n">🏁</span><span class="t">Retirarme' + (LG.isMulti(st) ? ' (el otro jugador sigue)' : ' y terminar la partida') + '</span></button></nav></div>',
+      {
+        keep: () => { if (LG.isMulti(st)) LG.switchTo(st, 0); MGR.seasonEnd(); },
+        share: () => MGR.shareCareer(c),
+        retire: () => UI.confirm(LG.isMulti(st) ? '¿Retirar a ' + c.name + '? El otro jugador seguirá en solitario.' : '¿Retirarte? La partida terminará y se borrará de la ranura ' + MGR.slot + '. Antes puedes guardar la imagen de tu carrera.', 'Retirarme', () => {
+          if (LG.isMulti(st)) { LG.removeManager(st, st.cur); save(); UI.toast(c.name + ' se retira. ¡Gracias por tantos años!'); MGR.seasonEnd(); return; }
+          U.store.del(LG.SAVE_KEY + MGR.slot); MGR.st = null; UI.toast('¡Gracias por tantos años en los banquillos!'); UI.mainMenu();
+        }, true),
+      });
+    A.sfxPlay('win');
+  };
+  MGR.careerImage = async function (c) {
+    const st = MGR.st; const t = T(c.team);
+    try { await Promise.all(['900 64px "Russo One"', '700 40px "Rajdhani"'].map((f) => document.fonts.load(f))); } catch (e) { /* opcional */ }
+    const W = 1080, H = 1350; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'); g.lineJoin = 'round'; g.miterLimit = 2;
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#120c02'); bg.addColorStop(0.5, '#2b1d05'); bg.addColorStop(1, '#0a2a14'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.save(); g.globalAlpha = 0.14; g.translate(W / 2, 520);
+    for (let i = 0; i < 24; i++) { g.rotate(Math.PI / 12); g.fillStyle = i % 2 ? '#f2c14a' : '#fff3b8'; g.beginPath(); g.moveTo(0, 0); g.lineTo(-60, -1200); g.lineTo(60, -1200); g.closePath(); g.fill(); }
+    g.restore();
+    const gold = (y0, y1) => { const gg = g.createLinearGradient(0, y0, 0, y1); gg.addColorStop(0, '#fff3b8'); gg.addColorStop(0.5, '#f2c14a'); gg.addColorStop(1, '#a8740d'); return gg; };
+    const text = (txt, x, y, font, fill, align, stroke) => { g.font = font; g.textAlign = align || 'center'; if (stroke) { g.lineWidth = stroke; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(txt, x, y); } g.fillStyle = fill; g.fillText(txt, x, y); };
+    text('MÍSTER FÚTBOL', W / 2, 115, 'italic 900 88px "Russo One", Impact, sans-serif', gold(40, 125), 'center', 10);
+    text('FIN DE CARRERA', W / 2, 180, '900 48px "Russo One", Impact, sans-serif', '#ffffff', 'center', 6);
+    // escudos de los clubes dirigidos
+    const ids = c.clubs.filter((id) => T(id)).slice(0, 5);
+    const imgs = await Promise.all(ids.map((id) => new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = GFX.badge(T(id), 240); })));
+    const sz = ids.length === 1 ? 260 : ids.length === 2 ? 200 : 150; const gap = 24; const x0 = (W - (ids.length * sz + (ids.length - 1) * gap)) / 2;
+    imgs.forEach((im, i) => { if (im) { g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 24; g.drawImage(im, x0 + i * (sz + gap), 230 + (260 - sz) / 2, sz, sz); g.restore(); } });
+    text(c.name.toUpperCase(), W / 2, 580, '900 64px "Russo One", Impact, sans-serif', '#ffffff', 'center', 8);
+    text(c.n + ' temporadas · ' + DB.SEASON_LABEL(c.from) + ' – ' + DB.SEASON_LABEL(c.to), W / 2, 630, '700 38px "Rajdhani", sans-serif', '#ffd966', 'center', 0);
+    for (let i = 0; i < 5; i++) {
+      const cx = W / 2 + (i - 2) * 110, cy = 720, r1 = 46, r2 = 20;
+      g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5; const r = k % 2 ? r2 : r1; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } g.closePath();
+      g.fillStyle = i < c.legend ? gold(cy - 46, cy + 46) : 'rgba(255,255,255,0.18)'; g.fill(); g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,0.6)'; g.stroke();
+    }
+    g.font = 'italic 700 40px "Rajdhani", sans-serif'; const words = ('«' + c.phrase + '»').split(' '); const lines = []; let cur = '';
+    words.forEach((wd) => { const tt = cur ? cur + ' ' + wd : wd; if (g.measureText(tt).width > 920) { lines.push(cur); cur = wd; } else cur = tt; }); if (cur) lines.push(cur);
+    lines.slice(0, 2).forEach((ln, k) => text(ln, W / 2, 815 + k * 46, 'italic 700 40px "Rajdhani", sans-serif', '#ffffff', 'center', 0));
+    // vitrina
+    const order = Object.keys(MGR.TROPHY).filter((k) => c.count[k]);
+    const bh = 90 + Math.max(1, Math.ceil(Math.min(order.length, 8) / 2)) * 46;
+    g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(70, 900, W - 140, bh); g.fillStyle = gold(900, 906); g.fillRect(70, 900, W - 140, 6);
+    text('PALMARÉS · ' + c.trophies.length + ' TÍTULOS', W / 2, 950, '700 32px "Rajdhani", sans-serif', '#ffd966', 'center', 0);
+    if (order.length) order.slice(0, 8).forEach((k, i) => { const col = i % 2, row = Math.floor(i / 2); text(MGR.TROPHY[k][0] + ' ' + MGR.TROPHY[k][1] + ' × ' + c.count[k], col ? W / 2 + 30 : 110, 1000 + row * 46, '700 32px "Rajdhani", sans-serif', '#ffffff', 'left', 0); });
+    else text('Sin títulos, pero con mil batallas', W / 2, 1060, '700 34px "Rajdhani", sans-serif', '#ffffff', 'center', 0);
+    g.fillStyle = 'rgba(0,0,0,0.78)'; g.fillRect(0, H - 82, W, 82);
+    text('¿Superarás mi carrera? Juega gratis en', 28, H - 46, '700 28px "Rajdhani", sans-serif', '#ffffff', 'left', 0);
+    text(MGR.GAME_URL, 28, H - 14, '900 28px "Russo One", Impact, sans-serif', gold(H - 40, H - 12), 'left', 0);
+    text('Diseñado por David OZC', W - 28, H - 30, '700 24px "Rajdhani", sans-serif', 'rgba(255,255,255,0.8)', 'right', 0);
+    return cv;
+  };
+  MGR.shareCareer = async function (c) {
+    UI.toast('Preparando la imagen…');
+    let cv; try { cv = await MGR.careerImage(c); } catch (e) { UI.toast('No se ha podido crear la imagen.'); return; }
+    const url = cv.toDataURL('image/png'); const name = 'mister-futbol-carrera-' + String(c.name || 'mister').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-') + '.png';
+    UI.modal('Imagen de tu carrera', '<img src="' + url + '" alt="Resumen de la carrera" style="width:100%;max-width:420px;display:block;margin:0 auto;border:3px solid #1d2126"><div class="row" style="justify-content:center;margin-top:10px"><button class="btn goldb" data-act="dl">⬇ Descargar imagen</button>' + (navigator.share ? '<button class="btn" data-act="sh">📤 Compartir</button>' : '') + '</div>', {
+      dl: () => { try { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { UI.toast('Mantén pulsada la imagen para guardarla.'); } },
+      sh: () => { cv.toBlob(async (blob) => { try { const file = new File([blob], name, { type: 'image/png' }); const data = { title: 'Míster Fútbol 26·27', text: 'Mi carrera en Míster Fútbol: ' + c.n + ' temporadas, ' + c.trophies.length + ' títulos, ' + '★'.repeat(c.legend) + ' «' + c.phrase + '». https://' + MGR.GAME_URL };
+        if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share(Object.assign({ files: [file] }, data)); else await navigator.share(data); } catch (e) { /* cancelado */ } }, 'image/png'); },
+    });
+  };
+
   // premios individuales de la temporada
   MGR.awardsHTML = function (h) {
     const st = MGR.st; const A = h.awards; if (!A) return '';

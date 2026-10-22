@@ -853,12 +853,14 @@
   // ---------- canteranos reales: convocados de las selecciones españolas sub-15 a sub-20 (js/data/youth.js)
   // Aparecen en la cantera de su club cuando cumplen 16 años (los que juegan fuera de España, en cualquier club).
   // Nunca se añade uno que ya esté en el juego.
+  const NAMES = new WeakMap();   // caché de nombres en uso (no se guarda en la partida)
   const LINE_ROLES = { POR: ['POR'], DEF: ['DFC', 'DFC', 'LD', 'LI'], MED: ['MC', 'MCD', 'MCO', 'MC'], DEL: ['DC', 'ED', 'EI', 'DC'] };
   LG.realYouthPool = function (st, tid, opts) {
     const pool = G.MF_YOUTH || []; opts = opts || {};
     st.ry = st.ry || {};
-    if (!st._names || st._namesN !== Object.keys(st.world.players).length) { st._names = new Set(Object.values(st.world.players).map((p) => p.name)); st._namesN = Object.keys(st.world.players).length; }
-    return pool.filter(([name, , club, by]) => !st.ry[name] && !st._names.has(name) && st.season - by >= 16 && (club === tid || (!opts.own && !club)));
+    const n = Object.keys(st.world.players).length; let c = NAMES.get(st);
+    if (!c || c.n !== n) { c = { n, set: new Set(Object.values(st.world.players).map((p) => p.name)) }; NAMES.set(st, c); }
+    return pool.filter(([name, , club, by]) => !st.ry[name] && !c.set.has(name) && st.season - by >= 16 && (club === tid || (!opts.own && !club)));
   };
   LG.takeRealYouth = function (st, tid, R, opts) {
     opts = opts || {}; const ln = (e) => !opts.line || e[1] === opts.line;
@@ -875,7 +877,7 @@
     if (y.role !== p.role) { p.role = y.role; p.line = DB.LINE_OF[y.role]; }
     p.alt = DB.altRoles ? DB.altRoles(p.name, p.role) : p.alt;
     p.pot = Math.max(p.pot || p.ovr, Math.min(94, p.ovr + 14));
-    st.ry = st.ry || {}; st.ry[y.name] = st.season; if (st._names) st._names.add(y.name);
+    st.ry = st.ry || {}; st.ry[y.name] = st.season; const c = NAMES.get(st); if (c) c.set.add(y.name);
   };
 
   LG.youthProspects = function (st) {
@@ -1326,6 +1328,98 @@
     5: ['¡LEYENDA! Esta temporada se estudiará en las escuelas de entrenadores', 'Temporada histórica: bautizan una calle con tu nombre', 'Galáctico, mítico, irrepetible', '¡Pentakill futbolero! No se recuerda nada igual', 'La vitrina necesita una ampliación urgente', 'Ni en la Play se gana tanto', 'Tu nombre ya brilla junto a los más grandes del banquillo', 'Temporada de cine: Oscar al mejor míster', 'El fútbol se rinde a tus pies', 'Ahora mismo eres trending topic mundial', 'Desfile en autobús descapotable asegurado', 'Que alguien llame al museo del club: hay que hacer sitio'],
   };
 
+  // ---------- FIN DE CARRERA (opcional desde la 5ª temporada completada)
+  LG.CAREER_MIN = 5;
+  LG.TROPHY_W = { liga: 3, ucl: 4, mundial: 3, copa: 1.5, uel: 2, uecl: 1.2, supes: 0.5, supercopa: 0.7, inter: 1, segunda: 1, playoff: 0.7 };
+  LG.career = function (st) {
+    const seasons = st.history.slice().reverse().map((h) => Object.assign({ season: h.season }, LG.histUser(st, h)))
+      .filter((x) => x.user && (!x.user.name || x.user.name === st.userName));
+    const n = seasons.length;
+    const trophies = (st.trophies || []).slice();
+    const count = {}; trophies.forEach((t) => { count[t.comp] = (count[t.comp] || 0) + 1; });
+    const stars = seasons.map((x) => (x.report ? x.report.stars : 2));
+    const avg = n ? U.sum(stars, (v) => v) / n : 0;
+    const pts = U.sum(trophies, (t) => LG.TROPHY_W[t.comp] || 0.5);
+    const legend = U.clamp(Math.round(avg * 0.8 + Math.min(1.6, pts / Math.max(1, n) * 0.7) + (n >= 10 ? 0.3 : 0)), 1, 5);
+    let best = null; seasons.forEach((x) => { const sc = (x.report ? x.report.stars : 0) * 10 + (x.report ? x.report.titles.length : 0); if (!best || sc > best.sc) best = Object.assign({ sc }, x); });
+    const clubs = (st.ach && st.ach.clubs) || [st.userTeam];
+    const pool = LG.LEGEND_TEXT[legend];
+    return { n, seasons, trophies, count, avg: Math.round(avg * 10) / 10, legend, phrase: pool[U.hash(st.userName + n + (st.seed || 0)) % pool.length], best, clubs, name: st.userName, team: st.userTeam,
+      from: seasons.length ? seasons[0].season : st.season, to: seasons.length ? seasons[n - 1].season : st.season };
+  };
+  LG.LEGEND_TEXT = {
+    1: ['Una carrera de las que se cuentan en voz baja', 'Pasaste por los banquillos como un suspiro', 'Más destituciones que alegrías, pero con dignidad', 'El fútbol te debe una (o varias)', 'Al menos te llevas buenas anécdotas para la radio', 'Tu pizarra pide una jubilación tranquila'],
+    2: ['Entrenador currante, de los que nunca se rinden', 'Una carrera honrada, sin grandes focos', 'Hubo noches buenas, aunque escasearon', 'Te recordarán en algún pueblo con cariño', 'Más luces que sombras… por poco', 'Un míster de batalla, de chándal y silbato'],
+    3: ['Carrera sólida: la directiva siempre te cogía el teléfono', 'Un técnico respetado en todos los vestuarios', 'Cumpliste donde fuiste, que no es poco', 'Tu nombre suena bien en las tertulias', 'De los que dejan los clubes mejor de como los encontraron', 'Un clásico de los banquillos españoles'],
+    4: ['Un entrenador de época: la afición aún corea tu nombre', 'Coleccionista de noches mágicas', 'Tus equipos jugaban de memoria', 'La prensa te recuerda como un sabio del banquillo', 'Tu vitrina da envidia a medio continente', 'Leyenda de tu club, ídolo de la grada'],
+    5: ['LEYENDA ABSOLUTA: ya tienes estatua a la puerta del estadio', 'Uno de los más grandes de la historia del fútbol', 'Tu palmarés no cabe en un solo museo', 'Inventaste una manera de ganar', 'Los futuros entrenadores estudiarán tus tácticas', 'Mito eterno de los banquillos'],
+  };
+
+  // ---------- CLUBES EXTRANJEROS: renovación gradual de sus plantillas desde la tercera temporada
+  // Sus jugadores de referencia no se guardan (se recrean desde js/data/world.js), así que la evolución es
+  // determinista: se recalcula desde los datos base cada vez. Los retirados se apuntan en st.fxOut y los
+  // jóvenes que los sustituyen son jugadores normales (sí se guardan).
+  LG.FX_START = 2028;
+  const FXN = {};   // caché de nombres por país (no se guarda)
+  LG.fxDelta = function (id, age, yr) {
+    const h = U.hash(id + '_fx_' + yr) % 1000 / 1000;
+    const [a, b] = age <= 21 ? [1, 3] : age <= 24 ? [0, 2] : age <= 29 ? [-1, 1] : age <= 32 ? [-2, 0] : [-4, -1];
+    return a + Math.floor(h * (b - a + 1));
+  };
+  LG.fxApply = function (st) {
+    if (st.season < LG.FX_START) return;
+    Object.values(st.world.players).forEach((p) => {
+      if (!p.fx || p._fxY === st.season) return;
+      const b = p._b || (p._b = { age: p.age, ovr: p.ovr });
+      let age = b.age, ovr = b.ovr;
+      for (let y = LG.FX_START; y <= st.season; y++) { age++; ovr = U.clamp(ovr + LG.fxDelta(p.id, age, y), 40, 95); }
+      const d = ovr - p.ovr; p.age = age; p.ovr = ovr; if (d) LG.bumpAttrs(p, d);
+      p.value = DB.playerValue(p); p.wage = DB.playerWage(p); p._fxY = st.season;
+    });
+  };
+  // nombres de jóvenes al estilo de cada país (mezcla nombres y apellidos de su liga)
+  LG.fxNames = function (st, country, R) {
+    if (!FXN[country]) {
+      const W = G.MF_WORLD; const clubs = new Set(W.clubs.filter((c) => c.country === country).map((c) => c.id));
+      const first = [], last = [];
+      const natives = W.players.filter((r) => clubs.has(r[1]) && r[10] === country).length >= 25;
+      W.players.forEach((r) => { if (!clubs.has(r[1]) || (natives && r[10] !== country)) return; const parts = String(r[3]).split(' '); if (parts.length < 2) return; first.push(parts[0]); last.push(parts.slice(1).join(' ')); });
+      FXN[country] = { first, last };
+    }
+    const P = FXN[country];
+    return P.first.length ? R.pick(P.first) + ' ' + R.pick(P.last) : null;
+  };
+  LG.fxRenew = function (st, R) {
+    if (st.season < LG.FX_START) return;
+    const w = st.world; LG.fxApply(st);
+    st.fxOut = st.fxOut || {};
+    const out = {};
+    Object.values(w.players).forEach((p) => {
+      if (!p.fx) return;
+      const h = U.hash(p.id + '_ret_' + st.season) % 100;
+      const ret = p.age >= 39 || (p.age >= 36 && h < 40) || (p.age >= 34 && p.ovr < 72 && h < 30);
+      if (!ret) return;
+      st.fxOut[p.id] = 1; delete w.players[p.id]; out[p.team] = (out[p.team] || 0) + 1;
+      if (p.ovr >= 84) LG.news(st, p.name + ' (' + (w.teams[p.team] ? w.teams[p.team].short : '') + ') cuelga las botas.', 'info');
+    });
+    DB.touch(w);
+    // un joven por cada retirado, con el nivel de su club
+    const roles = ['POR', 'DFC', 'LD', 'LI', 'MCD', 'MC', 'MCO', 'ED', 'EI', 'DC'];
+    Object.keys(out).forEach((tid) => {
+      const t = w.teams[tid]; if (!t) return;
+      const sq = DB.teamPlayers(w, tid); const avg = sq.length ? U.sum(sq, (q) => q.ovr) / sq.length : (t.base || 72);
+      for (let i = 0; i < out[tid]; i++) {
+        const gks = DB.teamPlayers(w, tid).filter((q) => q.role === 'POR').length;
+        const role = gks < 2 ? 'POR' : R.pick(roles.slice(1));
+        const np = LG.genPlayer(st, tid, role, U.clamp(Math.round(avg - 9 + R.int(-3, 3)), 50, 80), R.int(17, 19), R);
+        const nm = LG.fxNames(st, t.country, R); if (nm) { np.name = nm; np.short = U.surname(nm); }
+        np.nat = t.country; np.alt = DB.altRoles(np.name, np.role);
+      }
+    });
+    const n = U.sum(Object.values(out), (x) => x);
+    if (n) LG.news(st, 'Relevo generacional en el extranjero: ' + n + ' veteranos de otras ligas se retiran y llegan jóvenes promesas.', 'info');
+  };
+
   // ---------- nueva temporada
   LG.newSeason = function (st) {
     if (!st.seasonOver) return;
@@ -1381,6 +1475,7 @@
       t.mor = 70;
     });
     st.season++; st.day = 0; st.seasonOver = false; st.playoff = null; st.pendingRes = null; st.turnDone = null;
+    LG.fxRenew(st, R);   // clubes extranjeros: envejecen, se retiran veteranos y llegan jóvenes (desde la 3ª temporada)
     st.comp[1] = LG.makeComp(1, st.div[1], R); st.comp[2] = LG.makeComp(2, st.div[2], R);
     LG.forEachMgr(st, () => {
       st.youthUsed = false; st.offers = []; st.offerLog = {};
@@ -1465,6 +1560,7 @@
       delete st.world.teams[t.id];
     });
     DB.addForeign(st.world, st.fxOut);
+    LG.fxApply(st);   // edad y nivel actuales de los jugadores de clubes extranjeros
     st.div[4] = [];
     st.div[5] = Object.values(st.world.teams).filter((t) => t.foreign).map((t) => t.id);
     st.trophies = st.trophies || [];
