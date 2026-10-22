@@ -333,8 +333,12 @@
       }));
     }
     function statsHTML() {
-      const st = m.stats; const tot = st.possT[0] + st.possT[1]; const pos = Math.round(st.possT[0] / tot * 100);
       const row = (l, a, b) => MUI.statRow(l, a, b, cfg.kits);
+      if (m.director && m.dres) {   // estadísticas del motor de simulación (las mismas que decide el partido)
+        const st = m.dres.stats; const tp = st.possT[0] + st.possT[1]; const pos = tp ? Math.round(st.possT[0] / tp * 100) : 50;
+        return '<div class="panel" style="display:grid;gap:6px">' + row('Posesión %', pos, 100 - pos) + row('Tiros', st.shots[0], st.shots[1]) + row('A puerta', st.onTarget[0], st.onTarget[1]) + row('Goles esperados (xG)', +st.xg[0].toFixed(1), +st.xg[1].toFixed(1)) + row('Córners', st.corners[0], st.corners[1]) + row('Faltas', st.fouls[0], st.fouls[1]) + '</div>';
+      }
+      const st = m.stats; const tot = st.possT[0] + st.possT[1]; const pos = Math.round(st.possT[0] / tot * 100);
       return '<div class="panel" style="display:grid;gap:6px">' + row('Posesión %', pos, 100 - pos) + row('Tiros', st.shots[0], st.shots[1]) + row('A puerta', st.onTarget[0], st.onTarget[1]) + row('Córners', st.corners[0], st.corners[1]) + row('Faltas', st.fouls[0], st.fouls[1]) + '</div>';
     }
     function subsMenu(done) {
@@ -364,7 +368,7 @@
         '<div class="row"><b style="min-width:80px">Presión</b>' + seg('press', t.press, [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]) + '</div>' +
         '<div class="row"><b style="min-width:80px">Pases</b>' + seg('passing', t.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '</div></div></div></div>';
       bindOverlay();
-      ovl.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; m.retune(); if (cfg.onTactics) cfg.onTactics(t); tacMenu(); }));
+      ovl.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; m.retune(); if (m.dres) m.dres.tacMod[s] = null; if (cfg.onTactics) cfg.onTactics(t); tacMenu(); }));
     }
     function halftime(title, btn) {
       paused = true; MUI._htTitle = title; MUI._htBtn = btn;

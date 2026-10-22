@@ -200,7 +200,7 @@
     const cl = (l) => ({ formation: l.formation, xi: l.xi.slice(), bench: (l.bench || []).slice() });
     const L = [cl(opts.lhome), cl(opts.laway)];
     const T = [w.teams[opts.home], w.teams[opts.away]];
-    const from = opts.fromMinute || 0; const to = opts.toMinute || 90;
+    const from = opts.fromMinute || 0; const to = opts.toMinute === undefined || opts.toMinute === null ? 90 : opts.toMinute;
     const res = opts.base ? JSON.parse(JSON.stringify(opts.base)) : SIM.emptyResult(opts.home, opts.away);
     const S = res.stats;
     ['blocked', 'saves', 'xg', 'big', 'passes', 'passOk', 'offsides', 'yellows', 'possT'].forEach((k) => { if (!S[k]) S[k] = [0, 0]; });
@@ -313,7 +313,7 @@
       if (M.key !== key()) build();
       // posesión del minuto
       const gd0 = res.score[0] - res.score[1]; const late = m > 70 ? 1.4 : 1;
-      const pm = U.clamp(M.poss - U.clamp(gd0, -2, 2) * 0.035 * late - (11 - onPitch[0].length) * 0.05 + (11 - onPitch[1].length) * 0.05, 0.15, 0.85);
+      const pm = U.clamp(M.poss - U.clamp(gd0, -2, 2) * 0.025 * late - (11 - onPitch[0].length) * 0.05 + (11 - onPitch[1].length) * 0.05, 0.2, 0.8);
       const own = R() < pm ? 0 : 1; S.possT[own]++;
       for (let s = 0; s < 2; s++) {
         const o = 1 - s; const sd = M.side[s];

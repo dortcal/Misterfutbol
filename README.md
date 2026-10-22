@@ -66,7 +66,9 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
 
 Los datos de LaLiga 2024-25 (goles, resultados, penaltis) salen de los resultados publicados de la temporada; los marcados como «hipótesis» son valores de diseño aproximados, sin una fuente verificada, que se pueden recalibrar en `SIM.CAL`.
 
-**Limitaciones conocidas**: en el modo Visionado el partido lo decide el motor físico del campo 2D (`js/match.js`), que es otro modelo. Su media de goles es parecida, pero da más tiros a puerta y muy pocas faltas y fueras de juego. Igualarlos requiere que la animación represente los eventos de `sim.js` (siguiente fase). Los 0-0 (8,7 %) siguen algo por encima de los de la temporada real tomada como referencia.
+**Visionado con el mismo motor**: en el campo 2D el partido también lo decide `js/sim.js`. El campo va pidiendo a la simulación cada minuto que pasa en el reloj; los goles, tarjetas, lesiones y cambios que salen de ella se representan en el campo (el goleador recibe el balón y marca; si la jugada no llega, el gol llega a balón parado), y los tiros de la física nunca deciden el marcador (el portero para o el balón sale rozando el palo). Los cambios y la táctica que hagas durante el partido se aplican también a la simulación. El modo Jugar (desactivado) sigue usando la física pura.
+
+**Limitaciones conocidas**: los 0-0 (8,7 %) siguen algo por encima de los de la temporada real tomada como referencia. En Visionado, un gol puede verse uno o dos minutos después del minuto en que lo decide la simulación.
 
 ## Controles (un solo botón, al estilo PC Fútbol 2.0)
 
