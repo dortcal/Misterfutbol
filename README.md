@@ -23,6 +23,13 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Supercopa de España** (campeón y subcampeón de Liga y finalistas de Copa). La edición 2027 se juega en Estambul con los emparejamientos reales.
   - **Premios** por ronda superada y por título en todas las competiciones, según su importancia.
   - **Eliminatorias**: con empate (o global igualado) se juega la prórroga, con un cambio más, y la tanda de penaltis dentro del propio partido.
+  - **Tarjetas y sanciones por competición**:
+    - En Liga, 5 amarillas suponen un partido de sanción en Liga.
+    - En Copa, Supercopa y competiciones europeas, 3 amarillas suponen un partido de sanción en esa competición.
+    - Una roja (directa o por doble amarilla) deja al jugador fuera del siguiente partido de esa competición. Las dos amarillas de la doble amarilla no cuentan para el ciclo.
+    - Si el siguiente partido es una final, se perdona la sanción por acumulación de amarillas (la de una roja, no).
+    - En la alineación, cada jugador muestra sus amarillas en la competición del próximo partido (por ejemplo 2/3); en naranja, los apercibidos. Arriba aparecen los sancionados y los apercibidos, y la ficha del jugador detalla las tarjetas en cada competición.
+    - En el modo Resultado, el teletipo muestra amarillas y rojas. En el panel de táctica y cambios (Resultado y Visionado) se ve quién tiene amarilla en el partido y cuántas lleva acumuladas en la competición.
   - **Polivalencia**: algunos jugadores dominan dos o tres posiciones; fuera de ellas rinden algo menos en su misma línea y bastante menos en otra.
   - En el resumen del partido aparecen los espectadores y el porcentaje de ocupación del estadio.
   - **Copa del Rey** entre semana con Primera, Segunda (sin filiales) y Primera RFEF: partido único en el campo del equipo con peor media de plantilla, prórroga y penaltis si hay empate, y final en campo neutral (estadio del club más potente de Primera que no la juega).

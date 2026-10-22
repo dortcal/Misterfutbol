@@ -152,8 +152,8 @@
     res.events.forEach((e) => {
       const p = w.players[e.pid]; if (!p || !isSp(st, p.team)) return;
       if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión en Europa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
-      if (e.type === 'red' && LG.isManaged(st, p.team)) LG.news(st, p.name + ' es expulsado en Europa.', 'sus');
     });
+    LG.applyCards(st, f, res, (p) => isSp(st, p.team));
   };
   EU.coef = function (st, tid, pts) { const E = st.euro; const k = String(st.season); E.coef[tid] = E.coef[tid] || {}; E.coef[tid][k] = (E.coef[tid][k] || 0) + pts; };
   EU.pay = function (st, tid, amount, text) {
@@ -204,7 +204,7 @@
       LG.userSides(st, f).forEach((tid) => LG.own(st, tid, () => { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); ACH('debut_europa', st); }));
       EU.record(st, ev, f, res);
     });
-    LG.recover(st, played, false);
+    LG.recover(st, played, false); LG.serveSus(st, played, ev.code);
     EU.advance(st, ev, summary, R);
     return summary;
   };

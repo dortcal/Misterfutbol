@@ -255,7 +255,7 @@
       ko: f.comp === 'cup' || !!f.ko, agg: f.leg === 1 && f.tie && f.tie.legs[0] ? [f.tie.legs[0].ag, f.tie.legs[0].hg] : null,
       attendance: LG.attendance(st, f).att, capacity: LG.attendance(st, f).cap,
       mode, human: mode === 'jugar' ? userSide : -1, userSide, weather, label: f.label + (duel ? ' · Duelo de mánagers' : ''), manager: true,
-      neutral: !!f.neutral, venue: f.venue || null, cup: f.comp === 'cup' || !!f.final || f.comp === 'supercup' || f.comp === 'inter' || (f.comp === 'cwc' && !!f.ko),
+      comp: f.comp, neutral: !!f.neutral, venue: f.venue || null, cup: f.comp === 'cup' || !!f.final || f.comp === 'supercup' || f.comp === 'inter' || (f.comp === 'cwc' && !!f.ko),
       onEnd: (res) => {
         res.mode = mode;
         if (LG.isMulti(st)) { st.pendingRes = st.pendingRes || {}; st.pendingRes[f.key] = res; save(); MGR.hub(); return; }
@@ -328,7 +328,12 @@
   const T_ = (id) => MGR.st.world.teams[id];
   MGR.lineup = function () {
     const st = MGR.st;
-    UI.lineupEditor({ world: st.world, tid: st.userTeam, lineup: LG.userLineup(st), tactics: st.tactics, title: 'Alineación y táctica',
+    const f = LG.userFixture(st); const k = DB.ctx; const lim = DB.YEL_LIMIT(k);
+    const sq = DB.teamPlayers(st.world, st.userTeam); const risk = sq.filter((p) => DB.susFor(p, k) <= 0 && DB.yelFor(p, k) >= lim - 1); const sus = sq.filter((p) => DB.susFor(p, k) > 0);
+    const compNote = f ? '<b>Próximo partido:</b> ' + esc(f.label) + (LG.isFinal(st, f) ? ' · <b>final</b>: se perdonan las sanciones por acumulación de amarillas' : '') +
+      '<br><span class="muted">Las etiquetas amarillas muestran las tarjetas acumuladas en ' + esc(DB.compName(k)) + ' (sanción de un partido con ' + lim + '). En naranja, los que se perderían el siguiente partido de esta competición si ven otra.</span>' +
+      (sus.length ? '<br>Sancionados: <b>' + sus.map((p) => esc(p.short)).join(', ') + '</b>' : '') + (risk.length ? '<br>Apercibidos: <b>' + risk.map((p) => esc(p.short)).join(', ') + '</b>' : '') : '';
+    UI.lineupEditor({ world: st.world, tid: st.userTeam, lineup: LG.userLineup(st), tactics: st.tactics, title: 'Alineación y táctica', compNote,
       report: (L, T) => MGR.reportHTML(L, T), autoFn: (fm) => LG.assistantPlan(st, fm), onDone: (l, t) => { st.lineup = l; st.tactics = t; T(st.userTeam).formation = l.formation; save(); MGR.hub(); } });
   };
 

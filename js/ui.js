@@ -143,7 +143,10 @@
   UI.status = function (p) {
     let s = '';
     if (p.inj > 0) s += '<span class="tag t-inj" title="Lesionado">+' + p.inj + '</span>';
-    if (p.sus > 0) s += '<span class="tag t-sus" title="Sancionado">S' + p.sus + '</span>';
+    // sanción y amarillas en la competición del próximo partido
+    const k = DB.ctx, sv = DB.susFor(p, k), y = DB.yelFor(p, k), lim = DB.YEL_LIMIT(k);
+    if (sv > 0) s += '<span class="tag t-sus" title="Sancionado: no puede jugar el próximo partido de ' + esc(DB.compName(k)) + '">S' + sv + '</span>';
+    else if (y > 0) s += '<span class="tag t-yel' + (y >= lim - 1 ? ' risk' : '') + '" title="' + y + ' amarilla' + (y > 1 ? 's' : '') + ' en ' + esc(DB.compName(k)) + (y >= lim - 1 ? ': con otra se pierde el siguiente partido' : ' (sanción con ' + lim + ')') + '">' + y + '/' + lim + '</span>';
     if (p.realYouth && p.age <= 21) s += '<span class="tag t-xi" title="Internacional con la selección española ' + esc(p.realYouth) + '">🇪🇸 ' + esc(p.realYouth) + '</span>';
     return s;
   };
@@ -307,7 +310,7 @@
         const col = s[0] === 'POR' ? team.kit.gk.p : kit.p;
         const st = 'left:' + (s[2] * 100) + '%;top:' + ((1 - s[1] / 0.75) * 92 + 4) + '%';
         return '<button class="slot ' + (bad ? 'bad ' : warn ? 'warn ' : '') + (sel && sel.type === 'slot' && sel.i === i ? 'sel ' : '') + (p ? '' : 'empty') + '" style="' + st + '" data-act="slot" data-i="' + i + '" aria-label="' + s[0] + ': ' + (p ? esc(p.name) : 'vacío') + '">' +
-          '<span class="sh" style="background:' + col + ';color:' + (MF.DB.colorDist(col, '#ffffff') < 120 ? '#111' : '#fff') + '">' + (p ? p.num : '?') + '</span><span class="nm">' + (p ? esc(p.short) : '—') + '</span><span class="rl">' + s[0] + (p ? ' · ' + Math.round(DB.effOvr(p, s[0])) : '') + '</span>' + (p ? '<span class="fitbar" title="Estado físico ' + Math.round(p.fit) + '%"><i style="width:' + Math.round(p.fit) + '%;background:' + UI.fitColor(p.fit) + '"></i></span>' : '') + '</button>';
+          '<span class="sh" style="background:' + col + ';color:' + (MF.DB.colorDist(col, '#ffffff') < 120 ? '#111' : '#fff') + '">' + (p ? p.num : '?') + '</span><span class="nm">' + (p ? esc(p.short) + (DB.yelFor(p) >= DB.YEL_LIMIT(DB.ctx) - 1 ? ' 🟨' : '') : '—') + '</span><span class="rl">' + s[0] + (p ? ' · ' + Math.round(DB.effOvr(p, s[0])) : '') + '</span>' + (p ? '<span class="fitbar" title="Estado físico ' + Math.round(p.fit) + '%"><i style="width:' + Math.round(p.fit) + '%;background:' + UI.fitColor(p.fit) + '"></i></span>' : '') + '</button>';
       }).join('');
       const rating = DB.lineupRating(w, L);
       const seg = (k, v, opts) => '<div class="seg">' + opts.map(([x, l]) => '<button class="btn ' + (v === x ? 'on' : '') + '" data-act="tac" data-k="' + k + '" data-v="' + x + '">' + l + '</button>').join('') + '</div>';
@@ -316,7 +319,7 @@
         '<div class="row"><b style="min-width:92px">ESTILO</b>' + seg('style', T.style, [['defensiva', 'Defensivo'], ['equilibrada', 'Equilibrado'], ['ofensiva', 'Ofensivo']]) + '</div>' +
         '<div class="row"><b style="min-width:92px">PRESIÓN</b>' + seg('press', T.press, [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]) + '</div>' +
         '<div class="row"><b style="min-width:92px">PASES</b>' + seg('passing', T.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '<span class="spacer"></span><button class="btn alt" data-act="auto">Once automático</button><button class="btn goldb" data-act="done">Confirmar</button></div></div>' +
-        (o.report ? '<div class="panel report">' + o.report(L, T) + '</div>' : '') +
+        (o.compNote ? '<div class="panel" style="padding:8px 12px">' + o.compNote + '</div>' : '') + (o.report ? '<div class="panel report">' + o.report(L, T) + '</div>' : '') +
         '<div class="lineup"><div><div class="pitchbox"><div class="cc"></div>' + pitch + '</div><p class="muted">Borde amarillo: juega en otra posición de su misma línea (rinde un poco menos). Borde rojo: juega en otra línea y rinde bastante menos. Los jugadores polivalentes (posiciones extra en gris) no pierden nivel en ellas.</p></div>' +
         '<div class="panel" style="padding:6px"><div class="tbl-wrap" style="max-height:70vh;overflow-y:auto"><table class="tbl sq"><thead><tr><th>#</th><th>Pos</th><th>Jugador</th><th class="num">Med</th><th>Físico</th><th class="num hide-sm">Moral</th><th></th></tr></thead><tbody>' +
         squad.map((p) => { const i = L.xi.indexOf(p.id); return '<tr class="click ' + (sel && sel.type === 'pl' && sel.id === p.id ? 'sel' : '') + '" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td>' + esc(p.name) + UI.status(p) + (i >= 0 ? '<span class="tag t-xi">' + DB.FORMATIONS[L.formation][i][0] + '</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td style="white-space:nowrap">' + UI.fit(p.fit) + ' <small>' + Math.round(p.fit) + '%</small></td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td><button class="btn alt" style="min-height:26px;padding:0 6px;font-size:11px" data-act="info" data-id="' + p.id + '" aria-label="Ficha de ' + esc(p.name) + '">i</button></td></tr>'; }).join('') +
@@ -354,6 +357,15 @@
   };
 
   // ---------- FICHA DE JUGADOR
+  // amarillas acumuladas y sanciones en cada competición
+  UI.cardSummary = function (p) {
+    const ks = ['liga'].concat(Object.keys(Object.assign({}, p.yelC || {}, p.susC || {})));
+    const parts = ks.filter((k, i) => ks.indexOf(k) === i).map((k) => {
+      const y = DB.yelFor(p, k), sv = DB.susFor(p, k); if (!y && !sv && k !== 'liga') return '';
+      return esc(DB.compName(k)) + ': 🟨 ' + y + '/' + DB.YEL_LIMIT(k) + (sv > 0 ? ' · <b style="color:#c92a2a">sancionado ' + sv + '</b>' : '');
+    }).filter(Boolean);
+    return parts.join('<br>');
+  };
   UI.playerModal = function (w, pid, ctx) {
     const p = w.players[pid]; if (!p) return;
     const t = w.teams[p.team];
@@ -365,7 +377,8 @@
     UI.modal(p.name, '<div class="pcard"><img class="face" src="' + GFX.face(p, t.kit.home.p, 76) + '" width="76" height="76" alt=""><div style="flex:1;min-width:0"><div class="big">' + esc(p.name) + '</div><div>' + GFX.badgeImg(t, 22) + ' ' + esc(t.name) + ' · Dorsal ' + p.num + '</div><div class="muted">' + DB.ROLE_NAME[p.role] + (p.alt && p.alt.length ? ' (también ' + p.alt.map((r) => DB.ROLE_NAME[r].toLowerCase()).join(' y ') + ')' : '') + ' · ' + p.age + ' años · ' + esc(p.nat) + (p.retiring ? ' · <span class="tag t-inj">SE RETIRA</span>' : '') + (p.gen ? ' · <span class="tag t-gen">generado</span>' : '') + '</div></div><div class="center"><div class="bigovr">' + p.ovr + '</div><div class="muted">MEDIA</div></div></div>' +
       '<div class="grid2" style="gap:6px 16px">' + attrs.map(([l, k]) => '<div class="attr"><span>' + l + '</span><span class="b"><i style="width:' + p.at[k] + '%"></i></span><span>' + p.at[k] + '</span></div>').join('') + '</div>' +
       '<div class="kv"><b>Valor de mercado</b><span>' + U.money(p.value) + '</span><b>Salario</b><span>' + U.money(p.wage) + ' / temporada</span><b>Forma física</b><span>' + UI.fit(p.fit) + ' ' + Math.round(p.fit) + '%</span><b>Moral</b><span>' + Math.round(p.mor) + '/99</span>' +
-      '<b>Estado</b><span>' + (p.inj > 0 ? 'Lesionado (' + p.inj + ' jornadas)' : p.sus > 0 ? 'Sancionado (' + p.sus + ')' : 'Disponible') + '</span>' +
+      '<b>Estado</b><span>' + (p.inj > 0 ? 'Lesionado (' + p.inj + ' jornadas)' : DB.susFor(p) > 0 ? 'Sancionado para el próximo partido (' + esc(DB.compName(DB.ctx)) + ')' : 'Disponible') + '</span>' +
+      '<b>Tarjetas</b><span>' + UI.cardSummary(p) + '</span>' +
       '<b>Temporada</b><span>' + p.st.pj + ' PJ · ' + p.st.g + ' goles · ' + p.st.a + ' asist. · ' + p.st.ta + ' TA · ' + p.st.tr + ' TR · nota ' + avg + '</span></div>' + actions, ctx.acts || {});
   };
 

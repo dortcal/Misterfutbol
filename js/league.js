@@ -270,7 +270,7 @@
     return evs[0] || null;
   };
   LG.eventFixtures = (st, ev) => (ev.type === 'cup' ? LG.cupFixtures(st) : ev.type === 'supes' ? LG.supesFixtures(st) : MF.EU.fixtures(st, ev));
-  LG.playEvent = (st, ev, userRes) => (ev.type === 'cup' ? LG.playCupDay(st, userRes) : ev.type === 'supes' ? LG.playSupes(st, userRes) : MF.EU.play(st, ev, userRes));
+  LG.playEvent = (st, ev, userRes) => (LG.setCtx(st, LG.eventFixtures(st, ev)), ev.type === 'cup' ? LG.playCupDay(st, userRes) : ev.type === 'supes' ? LG.playSupes(st, userRes) : MF.EU.play(st, ev, userRes));
   // juega en segundo plano las fechas en las que no participa tu equipo (all: también las tuyas)
   LG.flushBackground = function (st, all) {
     for (let g = 0; g < 60; g++) {
@@ -281,13 +281,19 @@
   };
 
   LG.dayFixtures = function (st) {
-    const ev = LG.nextEvent(st); if (ev) return LG.eventFixtures(st, ev);
+    const ev = LG.nextEvent(st);
+    if (ev) { const fx = LG.eventFixtures(st, ev); LG.setCtx(st, fx); return fx; }
     const out = [];
     [1, 2].forEach((dv) => {
       const c = st.comp[dv]; if (st.day >= c.rounds.length) return;
       c.rounds[st.day].forEach(([h, a], i) => out.push({ h, a, key: st.day + '_' + i, comp: dv, label: (dv === 1 ? 'Primera' : 'Segunda') + ' · Jornada ' + (st.day + 1) }));
     });
-    return out.concat(LG.playoffFixtures(st));
+    const all = out.concat(LG.playoffFixtures(st)); LG.setCtx(st, all); return all;
+  };
+  // competición del próximo partido (para saber quién está sancionado) y amnistía en las finales
+  LG.setCtx = function (st, fx) {
+    DB.ctx = DB.compKey(fx && fx[0] ? fx[0].comp : 'liga');
+    (fx || []).forEach((f) => LG.pardonFinal(st, f));
   };
 
   LG.userFixture = function (st) {
@@ -580,6 +586,53 @@
     if (res.mode === 'jugar' && won) ACH('victoria_jugando');
   };
 
+  // ---------- tarjetas y sanciones por competición
+  // Liga: 5 amarillas = 1 partido. Resto de competiciones: 3 amarillas = 1 partido en esa competición.
+  // Roja (directa o por doble amarilla) = el siguiente partido de esa competición. Las amarillas que llevan
+  // a una doble amarilla no cuentan para el ciclo. La sanción por acumulación se perdona si el partido es una final.
+  LG.applyCards = function (st, f, res, filter) {
+    const w = st.world; const k = DB.compKey(f.comp); const lim = DB.YEL_LIMIT(k); const cn = DB.compName(k);
+    const tell = (p, txt) => { if (LG.isManaged(st, p.team)) LG.news(st, txt, 'sus'); };
+    res.events.forEach((e) => {
+      if (e.type !== 'yellow' && e.type !== 'red') return;
+      const p = w.players[e.pid]; if (!p || (filter && !filter(p))) return;
+      if (k === 'liga') {
+        if (e.type === 'yellow') { p.yel = (p.yel || 0) + 1; if (p.yel >= lim) { p.yel = 0; p.sus = Math.max(p.sus || 0, 1); p._justSus = true; tell(p, p.name + ' cumple ciclo de amarillas en Liga: 1 partido de sanción.'); } }
+        else { if (e.second) p.yel = Math.max(0, (p.yel || 0) - 1); p.sus = Math.max(p.sus || 0, 1); p._justSus = true; p.susYL = false; tell(p, p.name + ' es expulsado y se pierde el próximo partido de Liga.'); }
+        return;
+      }
+      p.yelC = p.yelC || {}; p.susC = p.susC || {}; p.susY = p.susY || {}; p.justC = p.justC || {};
+      if (e.type === 'yellow') {
+        p.yelC[k] = (p.yelC[k] || 0) + 1;
+        if (p.yelC[k] >= lim) { p.yelC[k] = 0; p.susC[k] = Math.max(p.susC[k] || 0, 1); p.susY[k] = 1; p.justC[k] = 1; tell(p, p.name + ' ve su ' + lim + 'ª amarilla en ' + cn + ': se pierde el próximo partido de esa competición (salvo que sea una final).'); }
+      } else {
+        if (e.second) p.yelC[k] = Math.max(0, (p.yelC[k] || 0) - 1);
+        p.susC[k] = Math.max(p.susC[k] || 0, 1); p.susY[k] = 0; p.justC[k] = 1; tell(p, p.name + ' es expulsado y se pierde el próximo partido de ' + cn + '.');
+      }
+    });
+  };
+  // cumplir sanciones de una competición distinta de la liga: cuenta el partido que su equipo acaba de jugar
+  LG.serveSus = function (st, played, comp) {
+    const k = DB.compKey(comp); if (k === 'liga') return;
+    Object.values(st.world.players).forEach((p) => {
+      if (!p.susC || !played.has(p.team)) return;
+      if (p.justC && p.justC[k]) { delete p.justC[k]; return; }
+      if (p.susC[k] > 0) { p.susC[k]--; if (!p.susC[k]) { delete p.susC[k]; if (p.susY) delete p.susY[k]; } }
+    });
+  };
+  LG.isFinal = (st, f) => !!(f && (f.final || f.key === 'sef' || (f.comp === 'cup' && f.cupRound === LG.CUP_ROUNDS.length - 1)));
+  // en una final se perdona la sanción por acumulación de amarillas
+  LG.pardonFinal = function (st, f) {
+    if (!LG.isFinal(st, f)) return;
+    const k = DB.compKey(f.comp);
+    [f.h, f.a].forEach((tid) => DB.teamPlayers(st.world, tid).forEach((p) => {
+      if (p.susC && p.susC[k] > 0 && p.susY && p.susY[k]) {
+        delete p.susC[k]; delete p.susY[k]; if (p.justC) delete p.justC[k];
+        if (LG.isManaged(st, tid)) LG.news(st, 'A ' + p.name + ' se le perdona la sanción por acumulación de amarillas: podrá jugar la final de ' + DB.compName(k) + '.', 'sus');
+      }
+    }));
+  };
+
   LG.applyResult = function (st, f, res, L) {
     const w = st.world;
     if (f.comp === 'playoff') {
@@ -606,10 +659,11 @@
     res.events.forEach((e) => {
       const p = w.players[e.pid]; if (!p) return;
       if (e.type === 'goal' && !e.own) { p.st.g++; if (e.assist && w.players[e.assist]) w.players[e.assist].st.a++; }
-      if (e.type === 'yellow') { p.st.ta++; p.yel++; if (p.yel >= 5) { p.yel = 0; p.sus = Math.max(p.sus, 1); p._justSus = true; if (LG.isManaged(st, p.team)) LG.news(st, p.name + ' cumple ciclo de amarillas: 1 partido de sanción.', 'sus'); } }
-      if (e.type === 'red') { p.st.tr++; p.sus = Math.max(p.sus, e.second ? 1 : 2); p._justSus = true; if (LG.isManaged(st, p.team)) LG.news(st, p.name + ' es expulsado y será baja ' + p.sus + ' partido(s).', 'sus'); }
+      if (e.type === 'yellow') p.st.ta++;
+      if (e.type === 'red') p.st.tr++;
       if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
     });
+    LG.applyCards(st, f, res);
     // moral de equipo y confianza de la directiva
     [f.h, f.a].forEach((tid, s) => {
       const t = w.teams[tid]; const gf = res.score[s], ga = res.score[1 - s];
@@ -1016,6 +1070,7 @@
       if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión en Copa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
     });
     [f.h, f.a].forEach((tid, s) => { const t = w.teams[tid]; t.mor = U.clamp((t.mor || 70) + (res.winSide === s ? 3 : -3), 30, 99); });
+    LG.applyCards(st, f, res);
   };
   LG.playCupDay = function (st, userRes) {
     const R = LG.rng(st); const w = st.world; const C = st.cup; const r = C.round;
@@ -1044,7 +1099,7 @@
         }
       }));
     });
-    LG.recover(st, played, false);
+    LG.recover(st, played, false); LG.serveSus(st, played, 'cup');
     const winners = C.rounds[r].ties.map((t) => t.w);
     C.round++;
     if (r === LG.CUP_ROUNDS.length - 1) {
@@ -1099,7 +1154,7 @@
       played.add(f.h); played.add(f.a); summary.push({ f, res });
       LG.userSides(st, f).forEach((tid) => LG.own(st, tid, () => { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); }));
     });
-    LG.recover(st, played, false);
+    LG.recover(st, played, false); LG.serveSus(st, played, 'supes');
     if (S.round === 0) { S.final = { a: S.semis[0].w, b: S.semis[1].w }; S.round = 1; LG.news(st, 'Final de la Supercopa de España: ' + w.teams[S.final.a].short + ' - ' + w.teams[S.final.b].short + '.', 'cup'); }
     else {
       S.done = true; S.winner = S.final.w; const wt = w.teams[S.winner];
@@ -1439,7 +1494,7 @@
       d = nv - p.ovr; p.ovr = U.clamp(nv, 40, 95); LG.bumpAttrs(p, d);
       if (p.age >= 30) { p.at.vel = U.clamp(p.at.vel - R.int(0, 2), 10, 99); p.at.res = U.clamp(p.at.res - R.int(0, 2), 10, 99); }
       p.value = DB.playerValue(p); p.wage = DB.playerWage(p);
-      p.st = { pj: 0, g: 0, a: 0, ta: 0, tr: 0, rat: 0, ps: 0 }; p.fit = 100; p.inj = 0; p.sus = 0; p.yel = 0; p.mor = 70;
+      p.st = { pj: 0, g: 0, a: 0, ta: 0, tr: 0, rat: 0, ps: 0 }; p.fit = 100; p.inj = 0; p.sus = 0; p.yel = 0; p.mor = 70; delete p.susC; delete p.yelC; delete p.susY; delete p.justC;
     });
     // retiradas y reposición con canteranos generados
     Object.values(w.players).forEach((p) => {

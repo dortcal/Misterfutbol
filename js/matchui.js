@@ -133,6 +133,15 @@
       });
   };
 
+  // tarjetas en el panel de cambios: amarilla en este partido y amarillas acumuladas en la competición
+  MUI.cardTags = function (p, inMatch, comp) {
+    if (!p) return '';
+    let s = inMatch ? ' <span class="tag t-yel" title="Amonestado en este partido: otra amarilla y será expulsado">🟨 TA</span>' : '';
+    if (comp === undefined || comp === null) return s;
+    const k = DB.compKey(comp), y = DB.yelFor(p, k), lim = DB.YEL_LIMIT(k);
+    if (y > 0) s += ' <span class="tag t-yel' + (y >= lim - 1 ? ' risk' : '') + '" title="Amarillas acumuladas en ' + esc(DB.compName(k)) + (y >= lim - 1 ? ': una más y se pierde el siguiente partido' : '') + '">' + y + '/' + lim + '</span>';
+    return s;
+  };
   // motivos de las tarjetas que no llegan con una falta (Visionado)
   MUI.CARD_WHY = {
     protestar: () => 'por protestar',
@@ -380,7 +389,7 @@
       let outSel = null;
       const draw = () => {
         ovl.innerHTML = '<div class="overlay"><div class="modal"><div class="head"><div class="ttl">Cambios · quedan ' + m.subsLeft[s] + '</div><button class="btn goldb" data-o="back">' + (done.length ? '✓ Listo' : '◀') + '</button></div><div class="body"><p class="muted" style="margin:0">Elige quién sale y después quién entra. Puedes hacer varios cambios seguidos.' + (done.length ? '<br><b>Cambios hechos:</b> ' + done.map(esc).join(' · ') : '') + '</p><div class="cols-2"><div><h3>En el campo</h3><table class="tbl"><tbody>' +
-          onp.map((p) => '<tr class="click ' + (outSel === p ? 'me' : '') + '" data-out="' + p.d.id + '"><td>' + p.role + '</td><td>' + UI.ovr(p.d.ovr) + ' ' + esc(p.d.short) + (p.injured ? ' <span class="tag t-inj">LES</span>' : '') + (p.yel ? ' <span class="tag" style="background:#e0a800">TA</span>' : '') + '</td><td>' + UI.fit(p.stam * 100) + '</td></tr>').join('') +
+          onp.map((p) => '<tr class="click ' + (outSel === p ? 'me' : '') + '" data-out="' + p.d.id + '"><td>' + p.role + '</td><td>' + UI.ovr(p.d.ovr) + ' ' + esc(p.d.short) + (p.injured ? ' <span class="tag t-inj">LES</span>' : '') + MUI.cardTags(w.players[p.d.id] || p.d, !!p.yel, cfg.comp) + '</td><td>' + UI.fit(p.stam * 100) + '</td></tr>').join('') +
           '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((p) => '<tr class="click" data-in="' + p.id + '"><td>' + UI.pos(p) + '</td><td>' + esc(p.short) + '</td><td>' + UI.ovr(p.ovr) + '</td></tr>').join('') : '<tr><td>Sin suplentes disponibles</td></tr>') + '</tbody></table></div></div></div></div></div>';
         bindOverlay();
         ovl.querySelectorAll('[data-out]').forEach((r) => r.addEventListener('click', () => { outSel = onp.find((p) => p.d.id === +r.dataset.out); draw(); }));
@@ -558,7 +567,8 @@
         if (evShown.has(i) || e.min > m) return; evShown.add(i);
         const team = (e.side === 0 ? th : ta).short.toUpperCase(); const nm = name(e.pid).toUpperCase();
         if (e.type === 'goal') { sc[e.side]++; line(e.min + '\' GOL DEL ' + team + ': ' + nm + (e.own ? ' (P.P.)' : e.pen ? ' (PEN.)' : ({ corner: ' (CÓRNER)', lateral: ' (FALTA LATERAL)', directa: ' (FALTA DIRECTA)', barrera: ' (FALTA, DESVÍO EN LA BARRERA)', regate: ' (REGATEA AL PORTERO)' }[e.setp] || '')) + ' · ' + sc[0] + '-' + sc[1], 'gol'); A.sfxPlay('goal'); A.sfxPlay('net'); if (speed < 4) setTimeout(() => A.sfxPlay('chant', 'ole'), 900); }
-        if (e.type === 'red') line(e.min + '\' EXPULSADO ' + nm + ' (' + team + ')', 'roja');
+        if (e.type === 'yellow') line(e.min + '\' TARJETA AMARILLA A ' + nm + ' (' + team + ')', 'amarilla');
+        if (e.type === 'red') line(e.min + '\' ' + (e.second ? 'SEGUNDA AMARILLA Y EXPULSADO ' : 'ROJA DIRECTA A ') + nm + ' (' + team + ')', 'roja');
         if (e.type === 'injury') { line(e.min + '\' SE LESIONA ' + nm + ' (' + team + ')'); if (e.side === us && !assist() && L[us].xi.indexOf(e.pid) >= 0) stop = 'Lesión de ' + name(e.pid) + ': haz un cambio.'; }
         if (e.type === 'sub') line(e.min + '\' CAMBIO EN EL ' + team + ': ENTRA ' + nm + ', SALE ' + name(e.out).toUpperCase(), 'cambio');
         if (e.type === 'save' && (e.big || e.kind === 'pen') && e.pid) line(e.min + '\' ¡' + (e.kind === 'pen' ? 'PENALTI PARADO' : 'PARADÓN') + ' DE ' + nm + '! (' + team + ') A ' + name(e.shooter).toUpperCase());
@@ -612,6 +622,7 @@
       const reds = new Set((res ? res.events : []).filter((e) => e.type === 'red' && e.side === s).map((e) => e.pid));
       const subbedOut = new Set((res ? res.events : []).filter((e) => e.type === 'sub' && e.side === s).map((e) => e.out));
       const injured = new Set((res ? res.events : []).filter((e) => e.type === 'injury' && e.side === s).map((e) => e.pid));
+      const yels = new Set((res ? res.events : []).filter((e) => e.type === 'yellow' && e.side === s).map((e) => e.pid));
       const stam = (id) => Math.round(((res && res.stam[id] !== undefined) ? res.stam[id] : w.players[id].fit / 100) * 100);
       const left = res ? res.subsLeft[s] : 5;
       const bench = (lu.bench || []).filter((id) => w.players[id] && !subbedOut.has(id) && lu.xi.indexOf(id) < 0 && DB.available(w.players[id]));
@@ -622,8 +633,8 @@
         '<div class="row"><b style="min-width:70px">Presión</b>' + seg('press', t.press, [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]) + '</div>' +
         '<div class="row"><b style="min-width:70px">Pases</b>' + seg('passing', t.passing, [['corto', 'Cortos'], ['mixto', 'Mixtos'], ['largo', 'Largos']]) + '</div></div>' +
         '<p class="muted" style="margin:6px 0">Cambios: quedan <b>' + left + '</b>. Toca quién sale y después quién entra.</p><div class="cols-2"><div><h3>En el campo</h3><table class="tbl"><tbody>' +
-        lu.xi.map((id, i) => (id === null || reds.has(id)) ? '' : '<tr class="click ' + (outSel === id ? 'me' : '') + '" data-out="' + id + '"><td>' + slots[i][0] + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + (injured.has(id) ? ' <span class="tag t-inj">LES</span>' : '') + '</td><td style="white-space:nowrap">' + UI.fit(stam(id)) + ' <small>' + stam(id) + '%</small></td></tr>').join('') +
-        '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((id) => '<tr class="click" data-in="' + id + '"><td>' + UI.pos(w.players[id]) + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + '</td><td>' + UI.fit(w.players[id].fit) + '</td></tr>').join('') : '<tr><td>Sin suplentes</td></tr>') + '</tbody></table></div></div></div></div></div>';
+        lu.xi.map((id, i) => (id === null || reds.has(id)) ? '' : '<tr class="click ' + (outSel === id ? 'me' : '') + '" data-out="' + id + '"><td>' + slots[i][0] + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + (injured.has(id) ? ' <span class="tag t-inj">LES</span>' : '') + MUI.cardTags(w.players[id], yels.has(id), cfg.comp) + '</td><td style="white-space:nowrap">' + UI.fit(stam(id)) + ' <small>' + stam(id) + '%</small></td></tr>').join('') +
+        '</tbody></table></div><div><h3>Banquillo</h3><table class="tbl"><tbody>' + (bench.length ? bench.map((id) => '<tr class="click" data-in="' + id + '"><td>' + UI.pos(w.players[id]) + '</td><td>' + UI.ovr(w.players[id].ovr) + ' ' + esc(name(id)) + MUI.cardTags(w.players[id], false, cfg.comp) + '</td><td>' + UI.fit(w.players[id].fit) + '</td></tr>').join('') : '<tr><td>Sin suplentes</td></tr>') + '</tbody></table></div></div></div></div></div>';
       const box = document.getElementById('tovl');
       box.querySelector('[data-p="go"]').addEventListener('click', () => { MUI._outSel = null; box.innerHTML = ''; paused = false; restart(); });
       box.querySelectorAll('[data-tk]').forEach((b) => b.addEventListener('click', () => { t[b.dataset.tk] = b.dataset.tv; if (res && res.tacMod) res.tacMod[us] = null; if (cfg.onTactics) cfg.onTactics(t); A.sfxPlay('click'); openPanel(title); }));

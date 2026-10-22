@@ -121,7 +121,16 @@
     }
     return (w._idx[tid] || []).slice();
   };
-  DB.available = (p) => p.inj <= 0 && p.sus <= 0;
+  // ---- sanciones por competición. La liga (y su promoción) usa p.sus / p.yel; el resto, p.susC / p.yelC por competición.
+  // DB.ctx es la competición del próximo partido: decide quién está disponible al hacer las alineaciones.
+  DB.ctx = 'liga';
+  DB.compKey = (c) => (c === undefined || c === null || typeof c === 'number' || /^\d+$/.test(String(c)) || c === 'playoff' || c === 'liga' || c === 'segunda') ? 'liga' : String(c);
+  DB.COMP_NAME = { liga: 'Liga', cup: 'Copa del Rey', supes: 'Supercopa de España', ucl: 'Champions League', uel: 'Europa League', uecl: 'Conference League', supercup: 'Supercopa de Europa', cwc: 'Mundial de Clubes', inter: 'Copa Intercontinental' };
+  DB.compName = (k) => DB.COMP_NAME[k] || String(k).toUpperCase();
+  DB.YEL_LIMIT = (k) => (k === 'liga' ? 5 : 3);
+  DB.susFor = (p, k) => { k = k === undefined ? DB.ctx : k; return k === 'liga' ? (p.sus || 0) : ((p.susC && p.susC[k]) || 0); };
+  DB.yelFor = (p, k) => { k = k === undefined ? DB.ctx : k; return k === 'liga' ? (p.yel || 0) : ((p.yelC && p.yelC[k]) || 0); };
+  DB.available = (p, k) => p.inj <= 0 && DB.susFor(p, k) <= 0;
 
   // Efectividad del jugador en un puesto (media ajustada por forma y moral)
   DB.effOvr = function (p, slotRole) {

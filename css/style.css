@@ -137,6 +137,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 15px; font-varian
 .l-POR { background: #c77d0a; } .l-DEF { background: #2a6fb5; } .l-MED { background: #3f8f35; } .l-DEL { background: #c0392b; }
 .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 5px; border-radius: 2px; color: #fff; line-height: 16px; margin-left: 4px; font-family: var(--f-body); }
 .t-inj { background: var(--red); } .t-sus { background: #222; } .t-xi { background: var(--bar); } .t-gen { background: #6c757d; }
+.t-yel { background: #f2c200; color: #1d2126; text-shadow: none; } .t-yel.risk { background: #ff8a00; color: #1d2126; box-shadow: 0 0 0 2px #1d2126 inset; }
+.teletipo .amarilla { color: #ffd84d; }
 .fit { display: inline-block; width: 46px; height: 8px; background: #6d7378; vertical-align: middle; position: relative; }
 .fit b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--green-ok); }
 .fit.mid b { background: #e0a800; } .fit.low b { background: var(--red); }
