@@ -270,9 +270,21 @@
       parts.push(sec((intl[0].f.comp === 'supes' ? '🎖️ ' : '🌍 ') + esc(intl[0].f.label), intl.slice(0, 18)));
       if (intl.length > 18) parts.push('<p class="muted" style="margin:-4px 0 8px">… y ' + (intl.length - 18) + ' partidos más en «Competiciones internacionales».</p>');
     }
+    // «Ver clasificación» lleva a la competición que se acaba de jugar (Liga, Copa, Supercopa o torneo internacional)
+    const mineR = summary.find((x) => LG.involvesMgr(st, x.f)) || summary[0];
+    const comp = mineR ? mineR.f.comp : 1;
+    const EUC = { ucl: 'ucl', uel: 'uel', uecl: 'uecl', supercup: 'mundo', inter: 'mundo', cwc: 'mundo' };
+    let tblLabel = 'Ver clasificación', tblAct = () => MGR.table(myDiv);
+    if (comp === 'cup' || comp === 'supes') { tblLabel = comp === 'cup' ? 'Ver cuadro de la Copa del Rey' : 'Ver Supercopa de España'; tblAct = () => MGR.cup(); }
+    else if (typeof comp === 'string' && comp !== 'playoff') {
+      const code = EUC[comp] || (MF.EU && MF.EU.CFG[comp] ? comp : 'mundo');
+      const nm = { ucl: 'Champions League', uel: 'Europa League', uecl: 'Conference League' }[code];
+      tblLabel = nm ? 'Ver clasificación de la ' + nm : 'Ver competiciones internacionales';
+      tblAct = () => { MGR.euroMd = null; MGR.europe(code); };
+    } else if (comp === 'playoff') tblLabel = 'Ver clasificación y playoff';
     UI.show(UI.head(cupR.length ? 'Resultados de Copa' : intl.length ? 'Resultados internacionales' : 'Resultados de la jornada', null, null) + '<div class="wrap">' + parts.join('') +
-      '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="cont" data-key="Enter" autofocus><span class="n">▶</span><span class="t">Continuar</span></button><button class="bar small" data-act="tbl"><span class="n">4</span><span class="t">Ver clasificación</span></button></nav></div>',
-      { cont: () => MGR.route(), tbl: () => MGR.table(myDiv) });
+      '<nav class="menu" style="max-width:none"><button class="bar gold" data-act="cont" data-key="Enter" autofocus><span class="n">▶</span><span class="t">Continuar</span></button><button class="bar small" data-act="tbl" data-key="4"><span class="n">4</span><span class="t">' + tblLabel + '</span></button></nav></div>',
+      { cont: () => MGR.route(), tbl: tblAct });
   };
 
   // ---------- alineación (con informe táctico y once del segundo entrenador)
