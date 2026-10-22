@@ -25,8 +25,13 @@
       case 'save': return pick(['¡Paradón de ' + P(ev.pid) + '!', 'Mano salvadora de ' + P(ev.pid) + '.', '¡Qué reflejos de ' + P(ev.pid) + '!', P(ev.pid) + ' saca una mano providencial.']);
       case 'catch': return pick(['Blocaje seguro de ' + P(ev.pid) + '.', P(ev.pid) + ' atrapa el balón sin problemas.']);
       case 'post': return pick(['¡Al palo! ¡Uyyy!', '¡La madera lo evita!', '¡El poste escupe el balón!']);
-      case 'yellow': return ev.reason === 'protestar' ? 'Tarjeta amarilla para ' + P(ev.pid) + ' por protestar.' : 'Tarjeta amarilla para ' + P(ev.pid) + '.';
-      case 'red': return ev.reason === 'protestar' ? '¡Roja directa a ' + P(ev.pid) + ' por encararse con el árbitro!' : '¡Roja! ' + P(ev.pid) + ' se va a la calle.';
+      case 'yellow': return MUI.cardText(ev, P, T) || 'Tarjeta amarilla para ' + P(ev.pid) + '.';
+      case 'red': {
+        if (ev.second) return '¡Segunda amarilla para ' + P(ev.pid) + (MUI.CARD_WHY[ev.reason] ? ' ' + MUI.CARD_WHY[ev.reason](ev, P, T) : '') + '! Se va a la calle.';
+        if (ev.reason === 'agresion') return '¡Roja directa a ' + P(ev.pid) + '! Agrede a ' + (ev.rival ? P(ev.rival) : 'un rival') + ' en un encontronazo.';
+        if (ev.reason === 'insulto' || ev.reason === 'protestar') return '¡Roja directa a ' + P(ev.pid) + ' por dirigirse de malas maneras al árbitro!';
+        return '¡Roja! ' + P(ev.pid) + ' se va a la calle.';
+      }
       case 'foul': return ev.sev > 0.5 ? pick(['¡Segada durísima de ' + P(ev.pid) + '!', '¡Qué entrada de ' + P(ev.pid) + '! El árbitro saca la tarjeta del bolsillo…']) : pick(['Falta de ' + P(ev.pid) + '.', 'El árbitro pita falta.', 'Entrada dura de ' + P(ev.pid) + '.']);
       case 'penalty': return '¡PENALTI a favor del ' + T(ev.side) + '!';
       case 'offside': return 'Fuera de juego de ' + P(ev.pid) + '.';
@@ -126,6 +131,25 @@
           }, 1900);
         },
       });
+  };
+
+  // motivos de las tarjetas que no llegan con una falta (Visionado)
+  MUI.CARD_WHY = {
+    protestar: () => 'por protestar',
+    ventaja: () => 'por una falta anterior (el árbitro aplicó la ley de la ventaja)',
+    camiseta: () => 'por quitarse la camiseta al celebrar el gol',
+    tiempo: () => 'por perder tiempo',
+    pelea: (ev, P) => 'por encararse con ' + (ev.rival ? P(ev.rival) : 'un rival'),
+    pelea2: () => 'por entrar en la tangana',
+    publico: () => 'por encararse con el público',
+    banquillo: (ev, P, T) => 'por encararse con el entrenador del ' + T(1 - ev.side),
+  };
+  MUI.cardText = function (ev, P, T) {
+    const f = MUI.CARD_WHY[ev.reason]; if (!f) return null;
+    if (ev.reason === 'pelea2') return 'También ve la amarilla ' + P(ev.pid) + ', que no se queda atrás en la tangana.';
+    if (ev.reason === 'tiempo') return 'Amarilla para ' + P(ev.pid) + ' por perder tiempo. El ' + T(ev.side) + ' se ve ganando y no tiene prisa.';
+    if (ev.reason === 'pelea') return 'Tangana entre ' + P(ev.pid) + ' y ' + (ev.rival ? P(ev.rival) : 'un rival') + '. Amarilla para ' + P(ev.pid) + '.';
+    return 'Tarjeta amarilla para ' + P(ev.pid) + ' ' + f(ev, P, T) + '.';
   };
 
   // ---------- partido en directo

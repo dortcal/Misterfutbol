@@ -179,17 +179,49 @@
         drop(); p.foulTarget = null; this._chaseNear = false; this.foul(p, o, e.type === 'red', e.type === 'red' ? 0.9 : 0.4); this.applyCard(e, p); }
     } else { p.foulTarget = null; this._chaseNear = false; }
   };
-  // en las interrupciones, las tarjetas pendientes (por protestar)
+  // en las interrupciones, las tarjetas pendientes que no llegaron con una falta: el motivo depende del momento
   MP.protestCards = function (all) {
     if (!this.director || !this.cardQ.length) return;
-    this.cardQ.filter((c) => c.protest || all).forEach((c) => {
+    const justScored = (c) => this.lastGoalT !== undefined && this.t - this.lastGoalT < 4 && c.e.pid === this.lastScorerId && c.e.type === 'yellow';
+    this.cardQ.filter((c) => c.protest || all || justScored(c)).forEach((c) => {
       this.cardQ.splice(this.cardQ.indexOf(c), 1);
-      const p = this.P[c.e.side].find((q) => q.d.id === c.e.pid && !q.off); if (p) { p.foulTarget = null; this.applyCard(c.e, p, 'protestar'); }
+      const p = this.P[c.e.side].find((q) => q.d.id === c.e.pid && !q.off); if (!p) return;
+      p.foulTarget = null;
+      const why = this.cardReason(c.e, p);
+      this.applyCard(c.e, p, why.reason, why.rival);
+      if (why.alsoRival) this.rivalCard(why.rival, c.e.min);
     });
   };
-  MP.applyCard = function (e, p, reason) {
-    if (e.type === 'yellow') { p.yel = 1; this.events.push(e); this.say('yellow', { pid: e.pid, side: e.side, reason }); }
-    else { if (e.second) p.yel = 1; this.events.push(e); this.say('red', { pid: e.pid, side: e.side, reason }); this.sendOff(p); }
+  // motivos de una tarjeta sin falta en el campo. Se eligen según lo que tenga sentido en ese momento.
+  MP.cardReason = function (e, p) {
+    const s = e.side; const lead = this.score[s] - this.score[1 - s]; const min = this.minute();
+    const rival = this.active(1 - s).filter((q) => !q.isGK).sort((a, c) => U.dist(a.x, a.y, p.x, p.y) - U.dist(c.x, c.y, p.x, p.y))[0];
+    if (e.type === 'red' && !e.second) {   // roja directa
+      return this.R() < 0.5 && rival ? { reason: 'agresion', rival: rival.d.id } : { reason: 'insulto' };
+    }
+    if (this.lastGoalT !== undefined && this.t - this.lastGoalT < 4 && e.pid === this.lastScorerId) return { reason: 'camiseta' };
+    const opts = [['ventaja', 3], ['protestar', 2.5], ['publico', 0.8], ['banquillo', 0.8]];
+    if (rival) opts.push(['pelea', 2.2]);
+    if (lead > 0 && min >= 55) opts.push(['tiempo', lead >= 2 ? 2.5 : 4]);
+    let r = this.R() * opts.reduce((a, o) => a + o[1], 0), pick = opts[0][0];
+    for (const o of opts) { r -= o[1]; if (r <= 0) { pick = o[0]; break; } }
+    if (pick === 'pelea') {
+      // a veces también ve la amarilla el rival (nunca si ya tenía una: no se inventan expulsiones)
+      const also = rival && !rival.yel && this.R() < 0.4;
+      return { reason: 'pelea', rival: rival.d.id, alsoRival: also };
+    }
+    return { reason: pick };
+  };
+  // amarilla del rival en un encontronazo: se anota también en la simulación para que cuente en el resto del partido
+  MP.rivalCard = function (pid, min) {
+    const side = this.P[0].some((q) => q.d.id === pid) ? 0 : 1; const p = this.P[side].find((q) => q.d.id === pid && !q.off); if (!p || p.yel) return;
+    const ev = { type: 'yellow', side, min: min || this.minute(), pid, _v: 1 };
+    if (this.dres) { this.dres.events.push(ev); if (this.dres.stats && this.dres.stats.yellows) this.dres.stats.yellows[side]++; }
+    this.applyCard(ev, p, 'pelea2');
+  };
+  MP.applyCard = function (e, p, reason, rival) {
+    if (e.type === 'yellow') { p.yel = 1; this.events.push(e); this.say('yellow', { pid: e.pid, side: e.side, reason, rival }); }
+    else { if (e.second) p.yel = 1; this.events.push(e); this.say('red', { pid: e.pid, side: e.side, reason, rival, second: !!e.second }); this.sendOff(p); }
   };
   // ---- jugadas a balón parado de la simulación que no acaban en gol
   MP.stageSetPiece = function (dt) {
@@ -574,7 +606,15 @@
   MP.safeToStop = function () {
     const b = this.ball; const ax = b.x / PL;
     if (this.director && this.pend.length) return false;
-    return (ax > 0.3 && ax < 0.7) || this.t > (this.half === 1 ? 47 + this.added[0] : this.half === 2 ? 92 + this.added[1] : this.half === 3 ? 106 : 121);
+    // nunca con un disparo o un centro en el aire, ni justo después (puede haber rechace y gol)
+    const moving = Math.hypot(b.vx || 0, b.vy || 0) > 1.2 || b.z > 0.2;
+    const live = !b.owner && moving && (b.type === 'shot' || b.type === 'cross' || b.type === 'header') || b.script || b.scriptCross || b.deflect || b.cornerOut;
+    if (live) { this._liveT = this.realT; return false; }
+    if (this._liveT !== undefined && this.realT - this._liveT < 1.5) return false;
+    // ni con una jugada de peligro dentro del área
+    const lim = this.half === 1 ? 47 + this.added[0] : this.half === 2 ? 92 + this.added[1] : this.half === 3 ? 106 : 121;
+    if ((this.inBox(0, b.x, b.y) || this.inBox(1, b.x, b.y)) && !(b.owner && b.owner.isGK) && this.t < lim + 2) return false;
+    return (ax > 0.3 && ax < 0.7) || this.t > lim;
   };
 
   MP.endHalf = function () {
@@ -1877,7 +1917,7 @@
     if (scorer && !own) scorer.st.goals++;
     if (assist) { const ap = this.P[side].find((q) => q.d.id === assist); if (ap) ap.st.ast++; }
     this.lastPasser = null;
-    this.lastConceded = 1 - side; this.lastScorerSide = side; this.lastScorerId = scorer ? scorer.d.id : null;
+    this.lastConceded = 1 - side; this.lastScorerSide = side; this.lastScorerId = scorer ? scorer.d.id : null; this.lastGoalT = this.t;
     this.celebX = U.clamp(b.x < PL / 2 ? 14 : PL - 14, 0, PL); this.celebY = b.y < PW / 2 ? 6 : PW - 6;
     b.vx *= 0.1; b.vy *= 0.1; b.vz = 0; b.z = 0; b.x = U.clamp(b.x, -1.5, PL + 1.5); b.owner = null; b.type = null;
     this.phase = 'goal'; this.phaseT = 3.2;

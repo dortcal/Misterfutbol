@@ -224,7 +224,7 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 .hbtn { width: 42px; height: 42px; border: 2px solid #0b0c0e; background: rgba(30,34,40,.85); color: #fff; font-family: var(--f-display); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .hbtn.on { background: var(--bar); }
 .radar { position: absolute; right: max(8px, env(safe-area-inset-right, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); border: 2px solid #0b0c0e; pointer-events: none; opacity: .92; }
-.ticker { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom, 0px)); max-width: min(560px, calc(100% - 200px)); background: rgba(10,12,14,.5); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); color: #fff; padding: 5px 12px; font-weight: 700; font-size: 15px; border-left: 4px solid var(--bar-hi); pointer-events: none; text-align: center; }
+.ticker { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(3px, env(safe-area-inset-bottom, 0px)); width: max-content; max-width: min(940px, calc(100% - 200px)); background: rgba(10,12,14,.5); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); color: #fff; padding: 5px 14px; font-weight: 700; font-size: 18px; line-height: 1.25; border-left: 4px solid var(--bar-hi); pointer-events: none; text-align: center; }
 .banner { position: absolute; left: 0; right: 0; top: 30%; text-align: center; pointer-events: none; }
 .banner .big { display: inline-block; font-family: var(--f-display); font-style: italic; font-size: clamp(48px, 12vw, 120px); line-height: 1;
   background: linear-gradient(180deg, var(--gold-1), var(--gold-2) 45%, var(--gold-3) 55%, #ffe28a); -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -251,7 +251,7 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 .power { position: absolute; right: max(18px, env(safe-area-inset-right, 0px)); bottom: calc(max(20px, env(safe-area-inset-bottom, 0px)) + 150px); width: 78px; height: 8px; background: rgba(0,0,0,.6); border: 1px solid #fff; }
 .power i { display: block; height: 100%; background: linear-gradient(90deg, #ffd60a, #ff3b30); width: 0; }
 .has-touch .radar { bottom: auto; top: calc(max(8px, env(safe-area-inset-top, 0px)) + 50px); }
-.has-touch .ticker { bottom: auto; top: calc(max(8px, env(safe-area-inset-top, 0px)) + 50px); max-width: calc(100% - 130px); left: max(8px, env(safe-area-inset-left, 0px)); transform: none; }
+.has-touch .ticker { font-size: 16px; bottom: auto; top: calc(max(8px, env(safe-area-inset-top, 0px)) + 50px); max-width: calc(100% - 130px); left: max(8px, env(safe-area-inset-left, 0px)); transform: none; }
 .keys-help { position: absolute; left: max(8px, env(safe-area-inset-left, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); color: #fff; background: rgba(0,0,0,.55); font-size: 13px; padding: 4px 8px; pointer-events: none; }
 
 /* ---------- teletipo (modo resultado) */
@@ -343,10 +343,10 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 
 /* narración en móvil vertical: franja inferior propia, fuera del campo y semitransparente */
 @media (orientation: portrait) and (max-width: 760px) {
-  .match:not(.has-touch) .ticker { bottom: max(6px, env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 20px); width: calc(100% - 20px); font-size: 13px; padding: 4px 8px; background: rgba(10,12,14,.42); }
+  .match:not(.has-touch) .ticker { bottom: max(6px, env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 20px); width: calc(100% - 20px); font-size: 15px; padding: 4px 8px; background: rgba(10,12,14,.42); }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  .match:not(.has-touch) .ticker { font-size: 12px; padding: 3px 8px; bottom: 4px; background: rgba(10,12,14,.38); max-width: 46%; }
+  .match:not(.has-touch) .ticker { font-size: 14px; padding: 2px 8px; bottom: 2px; background: rgba(10,12,14,.38); width: max-content; max-width: 76%; line-height: 1.2; }
 }
 .slot .fitbar { display: block; width: 34px; height: 4px; margin: 1px auto 0; background: rgba(0,0,0,.45); }
 .slot .fitbar i { display: block; height: 100%; }
