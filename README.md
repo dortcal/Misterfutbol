@@ -68,6 +68,12 @@ Los datos de LaLiga 2024-25 (goles, resultados, penaltis) salen de los resultado
 
 **Visionado con el mismo motor**: en el campo 2D el partido también lo decide `js/sim.js`. El campo va pidiendo a la simulación cada minuto que pasa en el reloj; los goles, tarjetas, lesiones y cambios que salen de ella se representan en el campo (el goleador recibe el balón y marca; si la jugada no llega, el gol llega a balón parado), y los tiros de la física nunca deciden el marcador (el portero para o el balón sale rozando el palo). Los cambios y la táctica que hagas durante el partido se aplican también a la simulación. El modo Jugar (desactivado) sigue usando la física pura.
 
+**Balón parado de la simulación**: el motor genera córners y faltas peligrosas (laterales y frontales). Algunos goles llegan de córner, de falta lateral, de falta directa (a veces con desvío en la barrera) o regateando al portero. En Visionado se escenifican así:
+- **Córners**: una jugada de ataque se desvía en un defensa y sale por la línea de fondo, y el córner se ejecuta con su rutina.
+- **Faltas**: el árbitro pita la falta donde está el atacante. Las laterales se juegan como un córner; las frontales, con barrera.
+- **Goles**: el gol de córner o de falta lateral lo marca de cabeza el goleador que decide la simulación; el de falta directa entra por la escuadra o tras tocar en la barrera; en el regate, el delantero deja atrás al portero que sale a por él y marca a puerta vacía.
+- **Narración**: el teletipo y el resumen cuentan cómo llegó cada gol.
+
 **Campo 2D (Visionado)**:
 - **Córners**: hay seis rutinas ofensivas (primer palo, segundo palo, punto de penalti, entre portero y defensa, en corto y pase atrás al borde del área) y tres esquemas defensivos (zonal, al hombre y mixto). Se eligen según el juego aéreo de los dos equipos, la táctica, el marcador y el minuto, y se evita repetir la última rutina.
 - **Papeles en el córner**: cada jugador tiene uno (rematador, arrastre, segundo rematador, llegada desde segunda línea, rechace, vigilancia, marcaje, primer palo, borde del área, contraataque).

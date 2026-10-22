@@ -7,13 +7,21 @@
 
   // ---------- narración
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  // cómo llegó el gol (lo decide la simulación y se ve igual en el campo y en el teletipo)
+  MUI.GOAL_HOW = {
+    corner: (n) => pick(['¡GOOOL de ' + n + ' en el córner! Cabezazo imparable.', '¡' + n + ' se eleva en el córner y la mete!']),
+    lateral: (n) => pick(['¡GOOOL de ' + n + '! Remate a la salida de una falta lateral.', '¡' + n + ' cabecea a la red el centro de la falta!']),
+    directa: (n) => pick(['¡GOLAZO DE FALTA DIRECTA de ' + n + '! Por encima de la barrera, a la escuadra.', '¡' + n + ' clava la falta en la escuadra!']),
+    barrera: (n) => pick(['¡GOOOL de ' + n + '! La falta toca en la barrera y despista al portero.', '¡' + n + ' marca de falta con desvío en la barrera!']),
+    regate: (n) => pick(['¡GOOOL de ' + n + '! Regatea al portero y marca a puerta vacía.', '¡' + n + ' deja sentado al portero y la empuja!']),
+  };
   MUI.comment = function (ev, m, w) {
     const P = (id) => (w.players[id] ? w.players[id].short : '');
     const T = (s) => m.T[s].short;
     switch (ev.type) {
       case 'goal': return ev.own ? pick(['¡Gol en propia puerta! Desgracia para el ' + T(1 - ev.side) + '.', '¡Autogol! El balón acaba dentro tras tocar en un defensa.']) :
-        pick(['¡GOOOL de ' + P(ev.pid) + '! ', '¡Golazo de ' + P(ev.pid) + '! ', '¡' + P(ev.pid) + ' no perdona! ']) + (ev.assist ? 'Asistencia de ' + P(ev.assist) + '.' : '');
-      case 'corner_routine': return 'Córner del ' + T(ev.side) + ': ' + ({ primer: 'centro al primer palo', segundo: 'buscan el segundo palo', punto: 'balón al punto de penalti', portero: 'centro cerrado entre el portero y la defensa', corto: 'lo sacan en corto', atras: 'jugada ensayada: pase atrás al borde del área' }[ev.routine] || 'centro al área') + ' · el ' + T(1 - ev.side) + ' defiende ' + ({ zonal: 'en zona', individual: 'al hombre', mixto: 'con un sistema mixto' }[ev.scheme] || '') + '.';
+        (MUI.GOAL_HOW[ev.setp] ? MUI.GOAL_HOW[ev.setp](P(ev.pid)) + ' ' : pick(['¡GOOOL de ' + P(ev.pid) + '! ', '¡Golazo de ' + P(ev.pid) + '! ', '¡' + P(ev.pid) + ' no perdona! '])) + (ev.assist && ev.setp !== 'directa' && ev.setp !== 'barrera' ? 'Asistencia de ' + P(ev.assist) + '.' : '');
+      case 'corner_routine': return (ev.free ? 'Falta lateral a favor del ' : 'Córner del ') + T(ev.side) + ': ' + ({ primer: 'centro al primer palo', segundo: 'buscan el segundo palo', punto: 'balón al punto de penalti', portero: 'centro cerrado entre el portero y la defensa', corto: 'lo sacan en corto', atras: 'jugada ensayada: pase atrás al borde del área' }[ev.routine] || 'centro al área') + ' · el ' + T(1 - ev.side) + ' defiende ' + ({ zonal: 'en zona', individual: 'al hombre', mixto: 'con un sistema mixto' }[ev.scheme] || '') + '.';
       case 'save': return pick(['¡Paradón de ' + P(ev.pid) + '!', 'Mano salvadora de ' + P(ev.pid) + '.', '¡Qué reflejos de ' + P(ev.pid) + '!', P(ev.pid) + ' saca una mano providencial.']);
       case 'catch': return pick(['Blocaje seguro de ' + P(ev.pid) + '.', P(ev.pid) + ' atrapa el balón sin problemas.']);
       case 'post': return pick(['¡Al palo! ¡Uyyy!', '¡La madera lo evita!', '¡El poste escupe el balón!']);
@@ -449,6 +457,7 @@
     const line = (e) => {
       const p = w.players[e.pid]; let t = icon(e) + ' ' + esc(p ? p.short : '');
       if (e.type === 'goal' && e.own) t += ' (p.p.)'; if (e.type === 'goal' && e.pen) t += ' (pen.)';
+      if (e.type === 'goal' && e.setp) t += ' <small class="muted">(' + ({ corner: 'córner', lateral: 'falta', directa: 'falta directa', barrera: 'falta, desvío', regate: 'regate al portero' }[e.setp] || '') + ')</small>';
       if (e.type === 'sub') t = '<span class="muted">⇄ ' + esc(p ? p.short : '') + ' x ' + esc(w.players[e.out] ? w.players[e.out].short : '') + '</span>';
       return t;
     };
@@ -524,7 +533,7 @@
       res.events.forEach((e, i) => {
         if (evShown.has(i) || e.min > m) return; evShown.add(i);
         const team = (e.side === 0 ? th : ta).short.toUpperCase(); const nm = name(e.pid).toUpperCase();
-        if (e.type === 'goal') { sc[e.side]++; line(e.min + '\' GOL DEL ' + team + ': ' + nm + (e.own ? ' (P.P.)' : e.pen ? ' (PEN.)' : '') + ' · ' + sc[0] + '-' + sc[1], 'gol'); A.sfxPlay('goal'); A.sfxPlay('net'); if (speed < 4) setTimeout(() => A.sfxPlay('chant', 'ole'), 900); }
+        if (e.type === 'goal') { sc[e.side]++; line(e.min + '\' GOL DEL ' + team + ': ' + nm + (e.own ? ' (P.P.)' : e.pen ? ' (PEN.)' : ({ corner: ' (CÓRNER)', lateral: ' (FALTA LATERAL)', directa: ' (FALTA DIRECTA)', barrera: ' (FALTA, DESVÍO EN LA BARRERA)', regate: ' (REGATEA AL PORTERO)' }[e.setp] || '')) + ' · ' + sc[0] + '-' + sc[1], 'gol'); A.sfxPlay('goal'); A.sfxPlay('net'); if (speed < 4) setTimeout(() => A.sfxPlay('chant', 'ole'), 900); }
         if (e.type === 'red') line(e.min + '\' EXPULSADO ' + nm + ' (' + team + ')', 'roja');
         if (e.type === 'injury') { line(e.min + '\' SE LESIONA ' + nm + ' (' + team + ')'); if (e.side === us && !assist() && L[us].xi.indexOf(e.pid) >= 0) stop = 'Lesión de ' + name(e.pid) + ': haz un cambio.'; }
         if (e.type === 'sub') line(e.min + '\' CAMBIO EN EL ' + team + ': ENTRA ' + nm + ', SALE ' + name(e.out).toUpperCase(), 'cambio');

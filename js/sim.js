@@ -144,7 +144,7 @@
     SHOT_EXP: 0.62,     // reparto de la calidad del ataque entre «más tiros» (0.62) y «mejores tiros» (0.38)
     PEN_XG: 0.12,       // parte de los goles esperados que llegan de penalti (se resta del juego abierto)
     FOULS: 12.2, YELLOW: 0.17, RED: 0.0028, BOX_FOUL: 0.019, PEN_GOAL: 0.77, SECOND_YELLOW: 0.3,
-    PASSES: 10.4, CORNERS: 3.1, OFFSIDES: 1.7, OWN_GOAL: 0.035,
+    PASSES: 10.4, CORNERS: 2.6, OFFSIDES: 1.7, OWN_GOAL: 0.035,
   };
   // tipos de ocasión: xG base, probabilidad de ir a puerta si no se bloquea, probabilidad de bloqueo
   SIM.CHANCES = {
@@ -153,6 +153,7 @@
     cabeza: { xg: 0.085, ot: 0.42, bl: 0.07, name: 'remate de cabeza' },
     clara: { xg: 0.36, ot: 0.68, bl: 0.05, name: 'ocasión clarísima' },
     abp: { xg: 0.075, ot: 0.38, bl: 0.16, name: 'jugada a balón parado' },
+    falta: { xg: 0.07, ot: 0.4, bl: 0.3, name: 'falta directa' },
   };
   const SHOOT_W = {
     lejano: { DC: 1.4, ED: 2, EI: 2, MCO: 3, MC: 2.4, MCD: 1.2, LD: 0.5, LI: 0.5, DFC: 0.4, POR: 0 },
@@ -252,15 +253,23 @@
     build();
     const pickW = (arr, f) => { const ws = arr.map(f); const tot = ws.reduce((a, b) => a + b, 0); if (!(tot > 0)) return R.pick(arr); let x = R() * tot; for (let i = 0; i < arr.length; i++) { x -= ws[i]; if (x <= 0) return arr[i]; } return arr[arr.length - 1]; };
     const gkFactor = (s) => { const g = M.gk[1 - s]; if (!g) return 1.6; const st = res.stam[g.id] || 1; return Math.exp(-(g.at.por - 72) * 0.014) * (st < 0.6 ? 1.05 : 1); };
-    const corner = (s) => { S.corners[s]++; };
+    // córners y faltas peligrosas quedan como eventos: el campo 2D los escenifica
+    const corner = (s, m, shotFrom) => { S.corners[s]++; res.events.push({ type: 'corner', side: s, min: m, shot: !!shotFrom }); };
+    const freekick = (s, m, zone, shotFrom) => { res.events.push({ type: 'freekick', side: s, min: m, zone, shot: !!shotFrom }); };
     // tiro: tipo de ocasión → rematador → bloqueo / fuera / parada / gol
     const shot = (s, m, kind, statMul) => {
-      const sd = M.side[s]; const o = 1 - s; const ch = SIM.CHANCES[kind];
+      const sd = M.side[s]; const o = 1 - s;
+      // balón parado: córner, falta lateral (centro) o falta directa
+      let setp = null;
+      if (kind === 'abp') { const r = R(); setp = r < 0.55 ? 'corner' : r < 0.8 ? 'lateral' : 'directa'; if (setp === 'directa') kind = 'falta'; }
+      if (setp === 'corner') corner(s, m, true); else if (setp) freekick(s, m, setp === 'directa' ? 'frontal' : 'lateral', true);
+      const ch = SIM.CHANCES[kind];
       const outfield = onPitch[s].filter((id) => w.players[id].line !== 'POR'); if (!outfield.length) return;
-      const shooter = pickW(outfield, (id) => {
+      const wk = kind === 'falta' ? 'lejano' : kind;
+      const shooter = kind === 'falta' ? outfield.slice().sort((a, b) => (w.players[b].at.tir + w.players[b].at.cal * 0.5) - (w.players[a].at.tir + w.players[a].at.cal * 0.5))[R() < 0.75 ? 0 : 1] || outfield[0] : pickW(outfield, (id) => {
         const p = w.players[id]; const r = roleOf(w, L[s], id);
         const skill = kind === 'cabeza' || kind === 'abp' ? (p.at.agr * 0.4 + p.ovr * 0.6) : kind === 'lejano' ? (p.at.tir * 0.7 + p.at.cal * 0.3) : (p.at.tir * 0.75 + p.at.reg * 0.25);
-        return SHOOT_W[kind][r] * Math.pow(skill / 70, 2.2) * (0.6 + 0.4 * (res.stam[id] || 1));
+        return SHOOT_W[wk][r] * Math.pow(skill / 70, 2.2) * (0.6 + 0.4 * (res.stam[id] || 1));
       });
       const p = w.players[shooter]; const stam = res.stam[shooter] || 1;
       const fin = kind === 'cabeza' || kind === 'abp' ? (p.at.agr * 0.35 + p.ovr * 0.65) : (p.at.tir * 0.8 + p.at.cal * 0.2);
@@ -269,19 +278,22 @@
       const pGoal = U.clamp(xg * gkFactor(s), 0.004, 0.92);
       S.shots[s]++; S.xg[s] += xg; if (xg >= 0.3) S.big[s]++;
       let assist = null;
-      if (R() < ASSIST_P[kind]) { const cands = onPitch[s].filter((id) => id !== shooter); if (cands.length) assist = pickW(cands, (id) => (ASSIST_T[kind][roleOf(w, L[s], id)] || 0.3) * Math.pow(w.players[id].at.pas / 70, 2)); }
+      if (kind !== 'falta' && R() < ASSIST_P[kind]) { const cands = onPitch[s].filter((id) => id !== shooter); if (cands.length) assist = pickW(cands, (id) => (ASSIST_T[kind][roleOf(w, L[s], id)] || 0.3) * Math.pow(w.players[id].at.pas / 70, 2)); }
       const blP = ch.bl * U.clamp(Math.pow(M.dfn[o] / 68, 1.2), 0.7, 1.4);
-      if (R() < blP) { S.blocked[s]++; if (R() < 0.35) corner(s); if (xg >= 0.3) res.events.push({ type: 'chance', side: s, min: m, pid: shooter, kind, out: 'block' }); return; }
+      if (R() < blP) { S.blocked[s]++; if (R() < 0.35) corner(s, m); if (xg >= 0.3) res.events.push({ type: 'chance', side: s, min: m, pid: shooter, kind, out: 'block' }); return; }
       const pg = pGoal / (1 - blP); const otP = Math.max(ch.ot, Math.min(0.97, pg + 0.06));
       if (R() >= otP) { const post = R() < 0.045; if (xg >= 0.3 || post) res.events.push({ type: 'chance', side: s, min: m, pid: shooter, kind, out: post ? 'post' : 'miss' }); return; }
       S.onTarget[s]++;
       if (R() < pg / otP) {
         res.score[s]++;
-        res.events.push({ type: 'goal', side: s, min: m, pid: shooter, assist, kind, xg: Math.round(xg * 100) / 100 });
+        // cómo llega el gol (para narrarlo y escenificarlo en el campo)
+        let how = setp === 'directa' ? (R() < 0.25 ? 'barrera' : 'directa') : setp;
+        if (!how && kind === 'clara' && R() < 0.24 * U.clamp((p.at.reg + p.at.vel) / 160, 0.6, 1.3)) how = 'regate';
+        res.events.push({ type: 'goal', side: s, min: m, pid: shooter, assist, kind, setp: how, xg: Math.round(xg * 100) / 100 });
       } else {
         S.saves[o]++; const g = M.gk[o];
         res.events.push({ type: 'save', side: o, min: m, pid: g ? g.id : null, shooter, kind, big: xg >= 0.3 });
-        if (R() < 0.3) corner(s);
+        if (R() < 0.3) corner(s, m);
       }
     };
     const penalty = (s, m) => {
@@ -332,7 +344,7 @@
         const exposed = gd > 0 ? 1 + 0.02 * Math.min(gd, 3) * late : 1;   // el rival que pierde se descubre
         const mult = (1 - red * 0.14) * (1 + redO * 0.16) * (m > 90 ? 0.85 : m > 75 ? 1.08 : 1) * fat * state * exposed;
         if (R() < sd.shotRate * mult) shot(s, m, pickW(Object.keys(sd.mix), (k) => sd.mix[k]));
-        if (R() < sd.cornerRate * mult) corner(s);
+        if (R() < sd.cornerRate * mult) corner(s, m);
         if (R() < sd.offRate) S.offsides[s]++;
         if (R() < C.OWN_GOAL / 90 * (M.lam[s] / C.LAM_REF)) {
           const pid = R.pick(onPitch[o].filter((id) => w.players[id].line === 'DEF').concat(onPitch[o])); res.score[s]++;
@@ -341,6 +353,8 @@
         // faltas (de este equipo): más cuando defiende; de ellas salen tarjetas y penaltis
         if (R() < sd.foulRate * (own === s ? 0.65 : 1.35)) {
           S.fouls[s]++;
+          // falta en zona de peligro a favor del rival (frontal o lateral): sin remate, también se ve en el campo
+          if (own !== s) { const rz = R(); if (rz < 0.06) freekick(o, m, 'frontal'); else if (rz < 0.14) freekick(o, m, 'lateral'); }
           const pid = R.weighted(onPitch[s], (id) => CARD_W[roleOf(w, L[s], id)] * (w.players[id].at.agr / 60));
           if (R() < C.RED) { res.events.push({ type: 'red', side: s, min: m, pid }); onPitch[s] = onPitch[s].filter((x) => x !== pid); }
           else if (R() < C.YELLOW * (w.players[pid].at.agr / 62) * (m > 75 ? 1.15 : 1) * (res.events.some((e) => e.type === 'yellow' && e.pid === pid) ? 0.5 : 1)) {

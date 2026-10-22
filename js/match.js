@@ -48,7 +48,7 @@
     this.director = this.human < 0 && cfg.director !== false && !!MF.SIM;
     if (this.director) {
       this.dR = U.rng(((cfg.seed || 7) * 2654435761) >>> 0);
-      this.pend = []; this.dmin = 0;
+      this.pend = []; this.dmin = 0; this.spQ = [];
       this.dres = MF.SIM.play(world, this.simOpts(0, 0));
     }
   }
@@ -79,7 +79,13 @@
     const find = (side, id) => this.P[side].find((p) => p.d.id === id && !p.off);
     this.dres.events.forEach((e) => {
       if (e._v) return; e._v = 1;
-      if (e.type === 'goal') { this.pend.push({ side: e.side, pid: e.pid, own: !!e.own, pen: !!e.pen, assist: e.assist || null, wait: 0 }); return; }
+      if (e.type === 'goal') {
+        this.pend.push({ side: e.side, pid: e.pid, own: !!e.own, pen: !!e.pen, assist: e.assist || null, setp: e.setp || null, wait: 0 });
+        // el córner o la falta de ese gol se escenifican con el propio gol
+        if (e.setp && e.setp !== 'regate') { const i = this.spQ.findIndex((q) => q.side === e.side && q.min === e.min && q.shot); if (i >= 0) this.spQ.splice(i, 1); }
+        return;
+      }
+      if (e.type === 'corner' || e.type === 'freekick') { this.spQ.push({ type: e.type === 'corner' ? 'corner' : e.zone, side: e.side, min: e.min, shot: !!e.shot, wait: 0 }); return; }
       const p = e.pid ? find(e.side, e.pid) : null;
       if (e.type === 'yellow' && p) { p.yel = 1; this.events.push(e); this.say('yellow', { pid: e.pid, side: e.side }); }
       if (e.type === 'red' && p) { if (e.second) p.yel = 1; this.events.push(e); this.say('red', { pid: e.pid, side: e.side }); this.sendOff(p); }
@@ -94,11 +100,26 @@
   MP.directorReady = function (limit) { return !this.director || (!this.pend.length && this.dmin >= limit); };
   // lleva al campo el siguiente gol de la simulación
   MP.directorPlay = function (dt) {
-    const g = this.pend[0]; if (!g || this.phase !== 'play') return;
+    if (this.phase !== 'play') return;
+    const g = this.pend[0]; if (!g) { this.stageSetPiece(dt); return; }
     g.wait += dt * this.minPerSec; g.cd = (g.cd || 0) - dt;
     const s = g.side; const b = this.ball;
     const sc = this.scriptShooter(g);
     if (!sc) return;
+    // si la jugada ensayada no cuaja en unos segundos, el gol llega con una falta frontal
+    if (g.placed && g.t0 && !g.attached && this.realT - g.t0 > 4 && g.setp === 'corner') { g.t0 = this.realT; this.placeCorner(s, b.y); return; }   // el balón no salió: córner directo
+    if (g.placed && g.t0 && this.realT - g.t0 > (g.attached ? 16 : 9)) { g.setp = null; g.placed = false; g.t0 = 0; g.attached = false; g.wait = 2.4; }
+    const owner = b.owner; const attacking = owner && owner.side === s && !owner.isGK && this.ax(s, owner.x) > 0.66;
+    if ((g.setp === 'corner' || g.setp === 'lateral' || g.setp === 'directa' || g.setp === 'barrera') && !g.placed) {
+      if (!attacking && g.wait < 1.2) return;
+      g.placed = true; g.t0 = this.realT;
+      if (g.setp === 'corner') { if (attacking) this.forceCornerOut(owner); else this.placeCorner(s, b.y); }
+      else if (g.setp === 'lateral') this.placeFree(s, 'lateral', attacking ? owner : null);
+      else { this.placeFree(s, 'frontal', attacking ? owner : null); this.setTaker(sc); this.restart.script = g; }
+      return;
+    }
+    if (g.placed && g.setp) return;   // esperando a que se juegue la jugada a balón parado
+    if (g.setp === 'regate' && b.owner === sc) return;   // lo resuelve el regate al portero (ownerDecision)
     if (g.pen && !g.placed) { g.placed = true; this.say('penalty', { side: s }); this.place('penalty', s, this.oppGoalX(s) - this.dir[s] * 11, PW / 2); this.setTaker(sc); this.restart.script = g; return; }
     if (b.owner === sc && U.dist(sc.x, sc.y, this.oppGoalX(s), PW / 2) < 24) { this.scriptShot(sc, g); return; }
     sc.runX = this.oppGoalX(s) - this.dir[s] * (11 + (g.wait * 3) % 5); sc.runY = PW / 2 + (sc.slot % 2 ? 5 : -5); sc.runT = 0.6;
@@ -113,6 +134,65 @@
       this.setTaker(sc); this.restart.script = g;
     }
   };
+  // ---- jugadas a balón parado de la simulación que no acaban en gol
+  MP.stageSetPiece = function (dt) {
+    const sp = this.spQ[0]; if (!sp) return;
+    if (this.simTarget() - sp.min > 4) { this.spQ.shift(); return; }   // demasiado antigua: se descarta
+    sp.wait += dt * this.minPerSec;
+    const b = this.ball; const s = sp.side; const owner = b.owner;
+    if (sp.forced) { if (this.realT - sp.forced > 3) this.spQ.shift(); return; }   // el balón no salió: se descarta
+    const attacking = owner && owner.side === s && !owner.isGK && this.ax(s, owner.x) > 0.66;
+    if (!attacking && sp.wait < 1.2) return;
+    if (sp.type === 'corner') { if (attacking) { sp.forced = this.realT; this.forceCornerOut(owner); } else { this.spQ.shift(); this.placeCorner(s, b.y); } return; }
+    this.spQ.shift();
+    this.placeFree(s, sp.type, attacking ? owner : null);
+  };
+  // un disparo o centro que toca en un defensa y sale por la línea de fondo
+  MP.forceCornerOut = function (p) {
+    const s = p.side; const gx = this.oppGoalX(s); const side = p.y < PW / 2 ? -1 : 1;
+    const tx = gx + this.dir[s] * 1, ty = PW / 2 + side * (GOAL_W / 2 + 1.6 + this.R() * 2.5);
+    const a = Math.atan2(ty - p.y, tx - p.x); const v = 19 + this.R() * 4;
+    p.st.shots++; this.kick(p, Math.cos(a) * v, Math.sin(a) * v, 1.5 + this.R() * 2, 'shot', null);
+    const b = this.ball; b.cornerOut = true; b.shotSaveTried = true;
+    const d = this.active(1 - s).filter((q) => !q.isGK).sort((x1, x2) => U.dist(x1.x, x1.y, p.x, p.y) - U.dist(x2.x, x2.y, p.x, p.y))[0]; if (d) b.last = d;
+  };
+  MP.placeCorner = function (s, y) {
+    const gx = this.oppGoalX(s);
+    this.stats.corners[s]++; this.say('corner', { side: s });
+    this.place('corner', s, gx === 0 ? 0.3 : PL - 0.3, y < PW / 2 ? 0.3 : PW - 0.3);
+  };
+  // falta lateral (se juega como un córner) o frontal (barrera)
+  MP.placeFree = function (s, zone, at) {
+    const gx = this.oppGoalX(s); const dir = this.dir[s];
+    let x, y;
+    if (zone === 'lateral') {
+      const side = at ? (at.y < PW / 2 ? -1 : 1) : (this.R() < 0.5 ? -1 : 1);
+      x = at ? U.clamp(at.x, Math.min(gx - dir * 22, gx - dir * 8), Math.max(gx - dir * 22, gx - dir * 8)) : gx - dir * (10 + this.R() * 10);
+      y = PW / 2 + side * U.clamp(at ? Math.abs(at.y - PW / 2) : 22, 16, 30);
+    } else {
+      x = gx - dir * (18 + this.R() * 7); y = PW / 2 + (this.R() - 0.5) * 16;
+      if (at && Math.abs(at.y - PW / 2) < 16 && U.dist(at.x, at.y, gx, PW / 2) > 17 && U.dist(at.x, at.y, gx, PW / 2) < 27) { x = at.x; y = at.y; }
+    }
+    const victim = at; if (victim) { victim.state = 'down'; victim.stateT = 1; }
+    this.stats.fouls[1 - s]++; this.say('foul', { side: 1 - s, pid: null });
+    if (this.hooks.sound) this.hooks.sound('whistle', this);
+    this._fkPlan = zone === 'lateral';
+    this.place('free', s, x, y);
+    this._fkPlan = false;
+  };
+  // el gol de córner o de falta lateral: el goleador es el rematador designado
+  MP.attachScript = function (plan, g) {
+    const sc = this.scriptShooter(g); if (!sc) return;
+    plan.script = g; g.attached = true; g.t0 = this.realT;
+    if (plan.routine === 'corto' || plan.routine === 'atras') plan.routine = this.R() < 0.5 ? 'segundo' : 'punto';
+    const old = plan.target;
+    const gx = this.oppGoalX(plan.s); const dir = this.dir[plan.s];
+    const zone = (old && plan.run.get(old)) || [gx - dir * (6 + this.R() * 5), PW / 2 + (this.R() - 0.5) * 8];
+    if (old && old !== sc) { const pOld = plan.pos.get(old), pSc = plan.pos.get(sc); if (pSc) plan.pos.set(old, pSc); else plan.pos.delete(old); plan.role.set(old, plan.role.get(sc) || 'área'); plan.run.delete(old); }
+    plan.target = sc; plan.role.set(sc, 'rematador'); plan.run.set(sc, zone);
+    plan.pos.set(sc, [zone[0] - dir * -0 + (this.R() - 0.5) * 2 - dir * 5, zone[1] + (this.R() - 0.5) * 4]);
+    if (this.restart && this.restart.taker === sc) { const alt = this.active(plan.s).filter((q) => !q.isGK && q !== sc).sort((a, c) => U.dist(a.x, a.y, this.restart.x, this.restart.y) - U.dist(c.x, c.y, this.restart.x, this.restart.y))[0]; if (alt) { this.restart.taker = alt; alt.tx = this.restart.takerPos ? this.restart.takerPos[0] : alt.x; alt.ty = this.restart.takerPos ? this.restart.takerPos[1] : alt.y; } }
+  };
   MP.scriptShooter = function (g) {
     const s = g.side; const act = this.active(s).filter((p) => !p.isGK);
     if (!g.own) { const p = act.find((q) => q.d.id === g.pid); if (p) return p; }
@@ -125,15 +205,22 @@
     rs.taker = p; this.ball.owner = p;
   };
   // disparo que acaba en gol: al palo contrario del portero, sin que nadie lo toque
-  MP.scriptShot = function (p, g) {
-    const s = p.side; const gx = this.oppGoalX(s); const gk = this.gk(1 - s);
+  MP.scriptShot = function (p, g, how) {
+    const s = p.side; const gx = this.oppGoalX(s); const gk = this.gk(1 - s); const b = this.ball;
     const side = gk && gk.y < PW / 2 ? 1 : -1;
-    const ty = PW / 2 + side * (GOAL_W / 2 - 0.75 - this.R() * 0.6);
-    const d = Math.max(4, U.dist(p.x, p.y, gx, ty)); const speed = 21 + this.R() * 5;
-    const a = Math.atan2(ty - p.y, gx - p.x); const T = d / speed; const h = 0.4 + this.R() * 1.3;
-    const vz = (h - 0.05 + 0.5 * GRAV * T * T) / T;
+    const empty = how === 'empty';
+    const ty = empty ? PW / 2 + (this.R() - 0.5) * 3 : PW / 2 + side * (GOAL_W / 2 - 0.95 - this.R() * 0.6);
+    const ox = b.owner ? p.x : b.x, oy = b.owner ? p.y : b.y;   // remate al primer toque: desde donde está el balón
+    const d = Math.max(3, U.dist(ox, oy, gx, ty));
+    const speed = how === 'header' ? 14 + this.R() * 3 : empty ? 11 + this.R() * 3 : how === 'free' ? 22 + this.R() * 3 : 21 + this.R() * 5;
+    const a = Math.atan2(ty - oy, gx - ox); const T = d / speed;
+    const h = how === 'free' ? 1.7 + this.R() * 0.5 : how === 'header' ? 0.3 + this.R() * 1.2 : empty ? 0.2 : 0.4 + this.R() * 1.3;
+    const z0 = b.owner ? 0.05 : Math.max(0.05, b.z);
+    const vz = (h - z0 + 0.5 * GRAV * T * T) / T;
     p.st.shots++; this.stats.shots[s]++;
+    if (how === 'header') { b.owner = null; b.z = z0; p.state = 'jump'; p.stateT = 0.4; this.say('header', { pid: p.d.id, side: s }); }
     this.kick(p, Math.cos(a) * speed, Math.sin(a) * speed, vz, 'shot', null);
+    if (how === 'header') p.state = 'jump';
     this.ball.script = g; p.face = a;
     if (gk) { gk.diveDir = -side; }
   };
@@ -211,7 +298,7 @@
 
   MP.place = function (type, side, x, y) {
     // side = equipo que saca
-    const b = this.ball; Object.assign(b, { x, y, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null, shotSaveTried: false });
+    const b = this.ball; Object.assign(b, { x, y, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null, shotSaveTried: false, script: null, scriptCross: null, cornerOut: false, deflect: null });
     let taker = null;
     if (type === 'goalkick') taker = this.gk(side);
     else if (type === 'penalty') {
@@ -233,9 +320,11 @@
     if (type === 'throw') { taker.x = x; taker.y = y < 1 ? -0.4 : PW + 0.4; }
     taker.tx = taker.x; taker.ty = taker.y; taker.want = 0;
     // en los córners, rematadores y defensores aparecen ya colocados en el área
-    if (type === 'corner' && side !== this.human) {
+    if ((type === 'corner' || (type === 'free' && this._fkPlan)) && side !== this.human) {
       // los jugadores llegan andando a sus puestos (sin teletransporte); el saque espera a que estén colocados
-      this.restart.plan = this.planCorner(side, x, y); this.restart.t0 = this.realT; this.phaseT = 1.4;
+      this.restart.plan = this.planCorner(side, x, y, type === 'free'); this.restart.t0 = this.realT; this.phaseT = 1.1;
+      const g = this.director && this.pend[0];
+      if (g && g.side === side && g.placed && (g.setp === 'corner' || g.setp === 'lateral')) this.attachScript(this.restart.plan, g);
       taker.x = p0x; taker.y = p0y; taker.tx = x - Math.cos(ang) * 0.7; taker.ty = y - Math.sin(ang) * 0.7; taker.want = 1; this.restart.takerPos = [taker.tx, taker.ty];
     } else if (type === 'corner') this.all().forEach((p) => { if (p === taker || p.isGK) return; const [x, y] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x; p.y = y; p.tx = x; p.ty = y; p.vx = p.vy = 0; });
     if (type === 'penalty') {
@@ -251,7 +340,7 @@
     // saque de meta: rivales fuera del área
     if (type === 'goalkick') this.active(1 - side).forEach((p) => { const [x2, y2] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x2; p.y = y2; p.tx = x2; p.ty = y2; p.vx = p.vy = 0; });
     // falta cerca del área: barrera de 4 jugadores a 9,15 m en la línea balón-portería
-    if (type === 'free') {
+    if (type === 'free' && !this.restart.plan) {
       const gx = this.ownGoalX(1 - side); const d = U.dist(x, y, gx, PW / 2);
       if (d < 34 && Math.abs(this.ax(1 - side, x)) < 0.36) {
         const a = Math.atan2(PW / 2 - y, gx - x); const cx = x + Math.cos(a) * 9.15, cy = y + Math.sin(a) * 9.15;
@@ -595,7 +684,7 @@
     corto: 'córner en corto', atras: 'pase atrás al borde del área',
   };
   MP.aerial = function (p) { return p.a.agr * 0.35 + p.d.ovr * 0.4 + p.a.res * 0.1 + (p.role === 'DFC' || p.role === 'DC' ? 9 : 0); };
-  MP.planCorner = function (s, cx, cy) {
+  MP.planCorner = function (s, cx, cy, isFree) {
     const o = 1 - s; const dir = this.dir[s]; const gx = this.oppGoalX(s);
     const X = (d) => gx - dir * d;                           // d metros desde la línea de fondo hacia dentro
     const sg = cy < PW / 2 ? -1 : 1;                          // lado del córner (primer palo)
@@ -628,6 +717,7 @@
     if (scheme === 'zonal') wts.primer *= 1.35; else if (scheme === 'individual') wts.punto *= 1.25;
     if (gd < 0 && late) { wts.portero *= 1.8; wts.punto *= 1.3; wts.corto *= 0.5; }
     if (this.lastCornerRoutine && this.lastCornerRoutine[s]) wts[this.lastCornerRoutine[s]] *= 0.55;   // no repetir siempre la misma
+    if (isFree) { wts.corto = 0; wts.portero *= 1.5; }   // falta lateral: centro directo al área
     const keys = Object.keys(wts); let tot = 0; keys.forEach((k) => { tot += wts[k]; });
     let r = RR() * tot, routine = keys[0]; for (const k of keys) { r -= wts[k]; if (r <= 0) { routine = k; break; } }
     this.lastCornerRoutine = this.lastCornerRoutine || [null, null]; this.lastCornerRoutine[s] = routine;
@@ -691,16 +781,24 @@
   };
   MP.cornerReady = function () {
     const rs = this.restart; const plan = rs.plan; const waited = this.realT - rs.t0;
-    if (waited > 6.5) return true;
+    if (waited > (plan.script ? 6.5 : 3.6)) return true;   // sin gol de por medio, no se hace esperar al espectador
     if (U.dist(rs.taker.x, rs.taker.y, rs.taker.tx, rs.taker.ty) > 0.8) return false;
     let n = 0, ok = 0; plan.pos.forEach((v, p) => { if (p.off) return; n++; if (U.dist(p.x, p.y, v[0], v[1]) < 2.2) ok++; });
-    return waited > 1.6 && ok >= n * 0.85;
+    return waited > 1.1 && ok >= n * 0.82;
   };
   MP.takeCorner = function (p, plan) {
     const s = p.side; const gx = this.oppGoalX(s); const dir = this.dir[s];
     this.cornerCtx = { plan, until: this.realT + 3.2 };
-    this.say('corner_routine', { side: s, routine: plan.routine, scheme: plan.scheme });
+    this.say('corner_routine', { side: s, routine: plan.routine, scheme: plan.scheme, free: this.ball.x > 1 && this.ball.x < PL - 1 });
     const t = plan.target && !plan.target.off ? plan.target : null;
+    if (plan.script && t) {   // centro medido al goleador de la simulación
+      const z = plan.run.get(t) || [gx - dir * 8, PW / 2]; const b = this.ball;
+      const d = U.dist(b.x, b.y, z[0], z[1]); const T = 0.85 + d / 26;
+      t.runX = z[0]; t.runY = z[1]; t.runT = T + 0.8;
+      this.kick(p, (z[0] - b.x) / T, (z[1] - b.y) / T, (1.7 + 0.5 * GRAV * T * T) / T, 'cross', t);
+      b.magnet = 1.3; b.scriptCross = plan.script; b.softLand = true;
+      return;
+    }
     if (plan.routine === 'corto' && plan.extra && !plan.extra.off) { this.pass(p, plan.extra, plan.extra.x, plan.extra.y, false); return; }
     if (plan.routine === 'atras' && plan.extra && !plan.extra.off) { const z = plan.run.get(plan.extra) || [plan.extra.x, plan.extra.y]; plan.extra.runX = z[0]; plan.extra.runY = z[1]; plan.extra.runT = 1.2; this.pass(p, plan.extra, z[0], z[1], false); return; }
     if (t) {
@@ -726,6 +824,12 @@
 
   MP.gkPosition = function (p) {
     const s = p.side; const b = this.ball; const gx = this.ownGoalX(s);
+    const pg = this.director && this.pend[0];
+    if (pg && pg.dribble && pg.side === 1 - s && b.owner) {   // sale al uno contra uno… y se lanza a destiempo
+      const o = b.owner; p.tx = o.x; p.ty = o.y; p.want = 1;
+      if (U.dist(p.x, p.y, o.x, o.y) < 2.2 && p.state !== 'dive') { p.state = 'dive'; p.stateT = 0.8; p.diveDir = Math.sign(o.y - p.y) || 1; }
+      return;
+    }
     const d = U.dist(b.x, b.y, gx, PW / 2);
     // sale a por el balón suelto dentro del área
     if (!b.owner && this.inBox(s, b.x, b.y) && this.chasers[s] === p && b.z < 2.5) {
@@ -801,6 +905,14 @@
     const b = this.ball; const p = b.owner;
     if (!p || p === this.ctrl) return;
     const s = p.side;
+    const pg = this.director && this.pend[0];
+    if (pg && pg.setp === 'regate' && pg.side === s && this.scriptShooter(pg) === p && !p.isGK && U.dist(p.x, p.y, this.oppGoalX(s), PW / 2) < 26) {
+      const gk = this.gk(1 - s); pg.dribble = true;
+      if (!gk || this.ax(s, p.x) > this.ax(s, gk.x) + 0.006) { pg.dribble = false; this.scriptShot(p, pg, 'empty'); return; }   // ya ha dejado atrás al portero
+      const sd = pg.dside || (pg.dside = p.y >= gk.y ? 1 : -1);
+      if (U.dist(p.x, p.y, gk.x, gk.y) < 5) { p.tx = gk.x + this.dir[s] * 2.5; p.ty = gk.y + sd * 2.8; } else { p.tx = gk.x; p.ty = gk.y + sd * 1.5; }
+      p.want = 1; return;
+    }
     if (this.director && this.pend.length && this.pend[0].side === s && this.scriptShooter(this.pend[0]) === p && !p.isGK) {
       p.tx = this.oppGoalX(s) - this.dir[s] * 14; p.ty = PW / 2 + (p.y - PW / 2) * 0.3; p.want = 1; return;
     }
@@ -867,6 +979,7 @@
     const b = this.ball;
     b.owner = null; b.vx = vx; b.vy = vy; b.vz = vz; b.z = Math.max(b.z, 0.05);
     b.last = p; b.kickBy = p; b.kickCd = 0.22; b.type = type; b.target = target || null; b.shotSaveTried = false; b.otCounted = false; b.magnet = 0; b.curveT = 0; b.softLand = false;
+    b.script = null; b.scriptCross = null; b.cornerOut = false; b.deflect = null;   // los guiones del director los vuelve a poner quien los necesita
     b.offside = target && this.isOffside(target) ? target : null;
     b.shotFrom = type === 'shot' ? [p.x, p.y] : null;
     p.kickCd = 0.3; p.state = 'kick'; p.stateT = type === 'shot' ? 0.26 : 0.18;
@@ -1396,6 +1509,13 @@
     } else b.curving = 0;
     const px = b.x, py = b.y;
     b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.deflect && U.dist(b.x, b.y, b.deflect.x, b.deflect.y) < 0.9) {   // la barrera desvía el balón y despista al portero
+      const D = b.deflect; b.deflect = null; this.say('wall', { side: 1 - (b.last ? b.last.side : 0), pid: D.pid });
+      const gx = this.oppGoalX(D.side); const gk = this.gk(1 - D.side);
+      const ty = PW / 2 + (gk && gk.y < PW / 2 ? 1 : -1) * (GOAL_W / 2 - 1); const T = U.dist(b.x, b.y, gx, ty) / 15;
+      b.vx = (gx - b.x) / T; b.vy = (ty - b.y) / T; b.vz = (1.0 - b.z + 0.5 * GRAV * T * T) / T; b.z = Math.max(b.z, 0.8);
+      if (gk) { gk.state = 'dive'; gk.stateT = 0.7; gk.diveDir = -Math.sign(ty - PW / 2) || 1; }
+    }
     b.spin += Math.hypot(b.vx, b.vy) * dt * 3;
     // postes y travesaño
     for (const gx of [0, PL]) {
@@ -1415,6 +1535,8 @@
         if (p.state === 'down') continue;
         if (p === b.kickBy && b.kickCd > 0) continue;
         if (b.script && b.type === 'shot') break;
+        if (b.scriptCross && p !== b.target) continue;
+        if (b.cornerOut) break;   // balón desviado camino de la línea de fondo
         let reach = p.isGK && this.inBox(p.side, b.x, b.y) ? 1.3 : 0.85;
         if (p === b.target && b.magnet) reach += 0.9 * b.magnet; // el receptor "atrae" el pase
         const zMax = p.isGK && this.inBox(p.side, b.x, b.y) ? 2.6 : 2.3;
@@ -1429,6 +1551,8 @@
 
   MP.touchBall = function (p) {
     const b = this.ball; const sp = Math.hypot(b.vx, b.vy);
+    b.cornerOut = false;
+    if (b.scriptCross && p === b.target) { const g = b.scriptCross; b.scriptCross = null; b.last = p; b.owner = null; p.st.touch++; this.scriptShot(p, g, b.z > 0.55 ? 'header' : 'volley'); return; }
     const s = p.side;
     // fuera de juego
     if (b.offside && b.offside === p && b.last && b.last.side === s) {
@@ -1448,7 +1572,7 @@
     if (b.z > 0.9 && this.inBox(s, b.x, b.y) && !p.isGK && b.last && b.last.side !== s) {
       p.st.touch++; b.owner = null;
       if (this.R() < 0.22) this.kick(p, -this.dir[s] * (4 + this.R() * 4), (this.R() - 0.5) * 16, 3, 'loose', null);
-      else if (this.R() < 0.3) { const sy = b.y < PW / 2 ? -1 : 1; this.kick(p, -this.dir[s] * (6 + this.R() * 4), sy * (9 + this.R() * 6), 5, 'clear', null); }   // despeje a córner
+      else if (!this.director && this.R() < 0.3) { const sy = b.y < PW / 2 ? -1 : 1; this.kick(p, -this.dir[s] * (6 + this.R() * 4), sy * (9 + this.R() * 6), 5, 'clear', null); }   // despeje a córner
       else this.kick(p, this.dir[s] * (8 + this.R() * 7), (this.R() - 0.5) * 18, 4 + this.R() * 3, 'clear', null);
       return;
     }
@@ -1516,7 +1640,6 @@
       if (lat <= reach + 0.6) { this.saveBall(gk, true); return; }
       const post = yAtGoal < PW / 2 ? GY1 - 0.7 : GY2 + 0.7; b.vy = (post - b.y) / Math.max(0.05, tGoal);
       // a veces el balón toca en un defensa: córner
-      if (this.R() < 0.4) { const d = this.active(s).filter((q) => !q.isGK).sort((a2, c) => U.dist(a2.x, a2.y, b.x, b.y) - U.dist(c.x, c.y, b.x, b.y))[0]; if (d) b.last = d; }
       return;
     }
     if (lat > reach + 0.35) return;
@@ -1538,7 +1661,7 @@
       this.say('catch', { pid: gk.d.id, side: s });
     } else {
       const out = this.dir[s]; const dd = gk.diveDir || 1;
-      if (this.R() < (this.director ? 0.62 : 0.45)) { // despeje a córner (por encima o junto al poste)
+      if (this.R() < 0.45) { // despeje a córner (por encima o junto al poste)
         b.vx = -out * (3 + this.R() * 2); b.vy = dd * (9 + this.R() * 5); b.vz = 5 + this.R() * 3;
       } else {
         b.vx = out * (3 + this.R() * 5); b.vy = dd * sp * (0.2 + this.R() * 0.25); b.vz = 1.5 + this.R() * 3;
@@ -1560,8 +1683,9 @@
         // un balón que la simulación no da por gol se queda fuera (rozando el palo)
         b.y = b.y < PW / 2 ? GY1 - 0.3 : GY2 + 0.3;
       }
-      const lastSide = b.last ? b.last.side : defSide;
+      const lastSide = b.cornerOut ? defSide : b.last ? b.last.side : defSide; b.cornerOut = false; b.scriptCross = null; b.deflect = null;
       if (lastSide === defSide) {
+        if (this.director) { const i = this.spQ.findIndex((q) => q.type === 'corner' && q.side === 1 - defSide); if (i >= 0) this.spQ.splice(i, 1); }
         this.stats.corners[1 - defSide]++;
         this.say('corner', { side: 1 - defSide });
         this.place('corner', 1 - defSide, gx === 0 ? 0.3 : PL - 0.3, b.y < PW / 2 ? 0.3 : PW - 0.3);
@@ -1588,7 +1712,7 @@
     let assist = null;
     if (!own && this.lastPasser && this.lastPasser[0] === side && this.lastPasser[1] !== scorer.d.id && this.t - this.lastPasser[2] < 8 * this.minPerSec) assist = this.lastPasser[1];
     const ev = { type: 'goal', side, min: this.minute(), pid: scorer ? scorer.d.id : null, assist, own, pen: this.lastRestartPenalty === true };
-    if (this.director && this.pend.length) { const g = this.pend.shift(); ev.pid = g.pid; ev.own = g.own; ev.pen = g.pen; ev.assist = g.assist; }
+    if (this.director && this.pend.length) { const g = this.pend.shift(); ev.pid = g.pid; ev.own = g.own; ev.pen = g.pen; ev.assist = g.assist; ev.setp = g.setp; }
     this.events.push(ev);
     if (scorer && !own) scorer.st.goals++;
     if (assist) { const ap = this.P[side].find((q) => q.d.id === assist); if (ap) ap.st.ast++; }
@@ -1608,7 +1732,15 @@
     b.owner = p; b.x = rs.type === 'kickoff' ? PL / 2 : rs.x; b.y = rs.type === 'kickoff' ? PW / 2 : rs.y;
     if (this.hooks.sound && (rs.type === 'kickoff' || rs.type === 'penalty' || rs.type === 'free')) this.hooks.sound('whistle', this);
     this.restart = null;
-    if (this.director && rs.script) { this.scriptShot(p, rs.script); if (rs.type === 'penalty') this.lastRestartPenalty = true; return; }
+    if (this.director && rs.script) {
+      const g = rs.script;
+      if (rs.type === 'penalty') { this.scriptShot(p, g); this.lastRestartPenalty = true; return; }
+      if (g.setp === 'barrera' && rs.wall && rs.wall.length) {   // disparo a la barrera que se desvía hacia la portería
+        const wm = rs.wall[Math.floor(this.R() * rs.wall.length)]; const a = Math.atan2(wm.y - p.y, wm.x - p.x);
+        this.kick(p, Math.cos(a) * 21, Math.sin(a) * 21, 2.2, 'shot', null); this.ball.script = g; this.ball.deflect = { x: wm.x, y: wm.y, side: s, pid: wm.d.id }; return;
+      }
+      this.scriptShot(p, g, rs.type === 'free' ? 'free' : null); return;
+    }
     if (rs.type === 'kickoff') {
       const r = this.active(s).filter((q) => q !== p && !q.isGK).sort((a, c) => U.dist(a.x, a.y, p.x, p.y) - U.dist(c.x, c.y, p.x, p.y))[0];
       if (r) this.pass(p, r, r.x, r.y, false);
@@ -1616,7 +1748,7 @@
     }
     // (los saques de la persona se resuelven en step/humanRestartButton; aquí solo llega la máquina)
     if (rs.type === 'penalty') { this.lastRestartPenalty = true; this.shoot(p, this.R() < 0.5 ? -0.7 : 0.7, 0.85); this.ball.shotFrom = [p.x, p.y]; return; }
-    if (rs.type === 'corner' && rs.plan) { this.takeCorner(p, rs.plan); return; }
+    if (rs.plan) { this.takeCorner(p, rs.plan); return; }
     if (rs.type === 'corner') {
       const tgt = this.active(s).filter((q) => q !== p && this.inBox(1 - s, q.x, q.y)).sort((a, c) => (c.a.agr + c.d.ovr * 0.5) - (a.a.agr + a.d.ovr * 0.5));
       const r = tgt[Math.floor(this.R() * Math.min(3, tgt.length))];
