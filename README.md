@@ -18,7 +18,7 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - Cansancio durante el partido (los jugadores cansados corren menos y fallan más), barrera de cuatro jugadores en las faltas cercanas y rivales fuera del área en los saques de meta.
   - Música de los menús: cinco temas originales en estilos deportivos (himno coral de gala, synth de acción ochentero, fanfarria de retransmisión, rock de entrenamiento y eurodance), seleccionables en Opciones.
   - Efectos de partido sintetizados: golpeo, cabezazo, entrada, palo y larguero, red, «¡uyyy!», aplausos, silbidos, abucheos, cánticos, palmas y bombo de la grada.
-  - Los veteranos anuncian su retirada durante la temporada y ya no se pueden traspasar. Los filiales no fichan ni pueden subir a Primera.
+  - Los veteranos anuncian su retirada durante la temporada y ya no se pueden traspasar. Nadie juega más allá de los 42 años. Los filiales no fichan ni pueden subir a Primera.
   - Plantilla y **mercado abierto hasta la jornada 29** (cerrado de la 30 al final de la temporada): Primera, Segunda, Primera RFEF y estrellas de otras ligas (Premier, Serie A, Bundesliga, Ligue 1, Liga Portugal, Saudi Pro League, MLS, Süper Lig). Ofertas recibidas (también de clubes extranjeros) y venta de jugadores.
   - **Supercopa de España** (campeón y subcampeón de Liga y finalistas de Copa). La edición 2027 se juega en Estambul con los emparejamientos reales.
   - **Premios** por ronda superada y por título en todas las competiciones, según su importancia.

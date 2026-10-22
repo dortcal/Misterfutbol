@@ -515,7 +515,7 @@
   LG.userSides = (st, f) => [f.h, f.a].filter((tid, i, a) => LG.isManaged(st, tid) && a.indexOf(tid) === i);
 
   // ---------- retiradas anunciadas: a lo largo de la temporada algunos veteranos anuncian que lo dejan
-  LG.willRetire = (p, R) => (p.age >= 38) || (p.age >= 35 && R() < 0.35) || (p.age >= 33 && p.ovr < 62 && R() < 0.4);
+  LG.willRetire = (p, R) => (p.age >= 41) || (p.age >= 38 && R() < 0.5) || (p.age >= 35 && R() < 0.35) || (p.age >= 33 && p.ovr < 62 && R() < 0.4);
   LG.retirementNews = function (st, R) {
     if (st.day < 8 || st.day > 34) return;
     Object.values(st.world.players).forEach((p) => {
@@ -1230,7 +1230,7 @@
     // retiradas y reposición con canteranos generados
     Object.values(w.players).forEach((p) => {
       if (p.fx) return;
-      if (p.retiring || p.age >= 40) {
+      if (p.retiring || p.age >= 42) {   // edad máxima de retirada: 42 años
         if (LG.isManaged(st, p.team)) LG.news(st, p.name + ' se retira del fútbol profesional. ¡Gracias por todo!', 'info');
         delete w.players[p.id];
       }
