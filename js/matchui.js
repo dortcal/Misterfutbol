@@ -13,6 +13,7 @@
     switch (ev.type) {
       case 'goal': return ev.own ? pick(['¡Gol en propia puerta! Desgracia para el ' + T(1 - ev.side) + '.', '¡Autogol! El balón acaba dentro tras tocar en un defensa.']) :
         pick(['¡GOOOL de ' + P(ev.pid) + '! ', '¡Golazo de ' + P(ev.pid) + '! ', '¡' + P(ev.pid) + ' no perdona! ']) + (ev.assist ? 'Asistencia de ' + P(ev.assist) + '.' : '');
+      case 'corner_routine': return 'Córner del ' + T(ev.side) + ': ' + ({ primer: 'centro al primer palo', segundo: 'buscan el segundo palo', punto: 'balón al punto de penalti', portero: 'centro cerrado entre el portero y la defensa', corto: 'lo sacan en corto', atras: 'jugada ensayada: pase atrás al borde del área' }[ev.routine] || 'centro al área') + ' · el ' + T(1 - ev.side) + ' defiende ' + ({ zonal: 'en zona', individual: 'al hombre', mixto: 'con un sistema mixto' }[ev.scheme] || '') + '.';
       case 'save': return pick(['¡Paradón de ' + P(ev.pid) + '!', 'Mano salvadora de ' + P(ev.pid) + '.', '¡Qué reflejos de ' + P(ev.pid) + '!', P(ev.pid) + ' saca una mano providencial.']);
       case 'catch': return pick(['Blocaje seguro de ' + P(ev.pid) + '.', P(ev.pid) + ' atrapa el balón sin problemas.']);
       case 'post': return pick(['¡Al palo! ¡Uyyy!', '¡La madera lo evita!', '¡El poste escupe el balón!']);

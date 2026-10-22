@@ -68,6 +68,13 @@ Los datos de LaLiga 2024-25 (goles, resultados, penaltis) salen de los resultado
 
 **Visionado con el mismo motor**: en el campo 2D el partido también lo decide `js/sim.js`. El campo va pidiendo a la simulación cada minuto que pasa en el reloj; los goles, tarjetas, lesiones y cambios que salen de ella se representan en el campo (el goleador recibe el balón y marca; si la jugada no llega, el gol llega a balón parado), y los tiros de la física nunca deciden el marcador (el portero para o el balón sale rozando el palo). Los cambios y la táctica que hagas durante el partido se aplican también a la simulación. El modo Jugar (desactivado) sigue usando la física pura.
 
+**Campo 2D (Visionado)**:
+- **Córners**: hay seis rutinas ofensivas (primer palo, segundo palo, punto de penalti, entre portero y defensa, en corto y pase atrás al borde del área) y tres esquemas defensivos (zonal, al hombre y mixto). Se eligen según el juego aéreo de los dos equipos, la táctica, el marcador y el minuto, y se evita repetir la última rutina.
+- **Papeles en el córner**: cada jugador tiene uno (rematador, arrastre, segundo rematador, llegada desde segunda línea, rechace, vigilancia, marcaje, primer palo, borde del área, contraataque).
+- **Colocación sin teletransportes**: los jugadores llegan corriendo a sus puestos y el saque espera a que estén colocados. Después del centro, los atacantes atacan su zona y los defensores siguen su marca o su zona.
+- **Movimiento**: aceleración propia de cada jugador (velocidad y cansancio), separación también entre rivales, giro progresivo, carrera hacia atrás de cara al balón y pasos laterales al bascular. El que salta a rematar de cabeza se ve en el aire.
+- **Táctica en el campo**: el jugador que presiona mantiene la presión salvo que otro esté claramente mejor situado, y el centro del campo se mantiene compacto sin balón. Los saques de puerta salen en corto o en largo según el tipo de pase elegido.
+
 **Limitaciones conocidas**: los 0-0 (8,7 %) siguen algo por encima de los de la temporada real tomada como referencia. En Visionado, un gol puede verse uno o dos minutos después del minuto en que lo decide la simulación.
 
 ## Controles (un solo botón, al estilo PC Fútbol 2.0)

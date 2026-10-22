@@ -217,11 +217,13 @@
     else if (type === 'penalty') {
       taker = this.active(side).filter((p) => !p.isGK).sort((a, b) => b.a.tir + b.d.ovr - a.a.tir - a.d.ovr)[0];
     } else if (type === 'corner') {
-      taker = this.active(side).filter((p) => !p.isGK).sort((a, b) => (b.a.pas - a.a.pas) + (b.line === 'DEF' ? -15 : 0) - (a.line === 'DEF' ? -15 : 0))[0];
+      // el lanzador: buen pasador, sin ser central, y que no esté en la otra punta del campo
+      taker = this.active(side).filter((p) => !p.isGK).sort((a, b) => (b.a.pas - a.a.pas) + (b.line === 'DEF' ? -15 : 0) - (a.line === 'DEF' ? -15 : 0) - (U.dist(b.x, b.y, x, y) - U.dist(a.x, a.y, x, y)) * 0.9)[0];
     } else {
       taker = this.active(side).filter((p) => !p.isGK || type === 'free' && this.ax(side, x) < 0.2).sort((a, b) => U.dist(a.x, a.y, x, y) - U.dist(b.x, b.y, x, y))[0];
     }
     if (!taker) taker = this.active(side)[0];
+    const p0x = taker.x, p0y = taker.y;
     this.restart = { type, side, taker, x, y };
     this.phase = 'restart'; this.phaseT = type === 'penalty' ? 2.2 : type === 'corner' ? 1.6 : type === 'throw' ? 0.9 : 1.2;
     // el ejecutor se coloca junto al balón
@@ -231,7 +233,11 @@
     if (type === 'throw') { taker.x = x; taker.y = y < 1 ? -0.4 : PW + 0.4; }
     taker.tx = taker.x; taker.ty = taker.y; taker.want = 0;
     // en los córners, rematadores y defensores aparecen ya colocados en el área
-    if (type === 'corner') this.all().forEach((p) => { if (p === taker || p.isGK) return; const [x, y] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x; p.y = y; p.tx = x; p.ty = y; p.vx = p.vy = 0; });
+    if (type === 'corner' && side !== this.human) {
+      // los jugadores llegan andando a sus puestos (sin teletransporte); el saque espera a que estén colocados
+      this.restart.plan = this.planCorner(side, x, y); this.restart.t0 = this.realT; this.phaseT = 1.4;
+      taker.x = p0x; taker.y = p0y; taker.tx = x - Math.cos(ang) * 0.7; taker.ty = y - Math.sin(ang) * 0.7; taker.want = 1; this.restart.takerPos = [taker.tx, taker.ty];
+    } else if (type === 'corner') this.all().forEach((p) => { if (p === taker || p.isGK) return; const [x, y] = this.setPiecePos(p, this.restart, p.x, p.y); p.x = x; p.y = y; p.tx = x; p.ty = y; p.vx = p.vy = 0; });
     if (type === 'penalty') {
       // resto de jugadores fuera del área
       this.all().forEach((p) => {
@@ -314,6 +320,7 @@
       this.thinkPositions(dt, true);
       this.moveAll(dt, true);
       const tk = this.restart && this.restart.taker; if (tk) { b.x = this.restart.type === 'kickoff' ? PL / 2 : this.restart.x; b.y = this.restart.type === 'kickoff' ? PW / 2 : this.restart.y; b.z = 0; }
+      if (this.restart && this.restart.plan) { b.owner = null; if (this.phaseT <= 0 && this.cornerReady()) { b.owner = this.restart.taker; this.executeRestart(); } return; }
       if (this.phaseT <= 0) this.executeRestart();
       return;
     }
@@ -470,7 +477,7 @@
         // posición zonal
         let ax = p.hx + shift * (p.line === 'DEF' ? 0.85 : p.line === 'MED' ? 1 : 0.8);
         if (p.line === 'DEF') ax = U.clamp(ax, 0.07, inPos ? 0.6 : 0.42);
-        if (p.line === 'MED') ax = U.clamp(ax, 0.15, 0.8);
+        if (p.line === 'MED') ax = U.clamp(ax, 0.15, inPos ? 0.8 : 0.62);   // sin balón, bloque compacto
         if (p.line === 'DEL') ax = U.clamp(ax, 0.3, 0.92);
         if (inPos) ax = Math.min(ax, offLine - 0.01);
         let ny = inPos ? 0.5 + (p.hy - 0.5) * 1.12 : p.hy + (bny - p.hy) * 0.33;
@@ -521,7 +528,9 @@
             }
           }
         }
-        if (setPiece && rs) { const r = this.setPiecePos(p, rs, tx, ty); tx = r[0]; ty = r[1]; want = 0.8; }
+        if (setPiece && rs && rs.plan) { const q = p === rs.taker ? rs.takerPos : rs.plan.pos.get(p); if (q) { tx = q[0]; ty = q[1]; want = 1; } }
+        else if (setPiece && rs) { const r = this.setPiecePos(p, rs, tx, ty); tx = r[0]; ty = r[1]; want = 0.8; }
+        else if (this.cornerCtx && this.realT < this.cornerCtx.until && !(this.chasers[s] === p && !owner)) { const q = this.cornerMove(p); if (q) { tx = q[0]; ty = q[1]; want = q[2]; } }
         if (p.think <= 0) p.think = 0.15 + this.R() * 0.2;
         p.tx = U.clamp(tx, 0.5, PL - 0.5); p.ty = U.clamp(ty, 0.5, PW - 0.5); p.want = want;
       }
@@ -533,8 +542,15 @@
     if (!this._pressCache || this._pressCache.t !== this.realT) this._pressCache = { t: this.realT };
     if (this._pressCache[key] !== undefined) return this._pressCache[key];
     const c = this.active(s).filter((p) => !p.isGK && p !== this.ctrl).sort((a, b) => U.dist(a.x, a.y, carrier.x, carrier.y) - U.dist(b.x, b.y, carrier.x, carrier.y));
-    this._pressCache[key] = c[rank] || null;
-    return this._pressCache[key];
+    let pick = c[rank] || null;
+    // persistencia: quien ya presiona sigue haciéndolo salvo que otro esté claramente mejor situado
+    this._pressLock = this._pressLock || {};
+    const L = this._pressLock[key];
+    if (L && L.p && !L.p.off && L.carrier === carrier && this.realT < L.until && pick && L.p !== pick && c.indexOf(L.p) >= 0 &&
+      U.dist(L.p.x, L.p.y, carrier.x, carrier.y) < U.dist(pick.x, pick.y, carrier.x, carrier.y) + 3) pick = L.p;
+    if (!L || L.p !== pick || L.carrier !== carrier) this._pressLock[key] = { p: pick, carrier, until: this.realT + 0.9 };
+    this._pressCache[key] = pick;
+    return pick;
   };
 
   MP.setPiecePos = function (p, rs, tx, ty) {
@@ -569,6 +585,143 @@
       return [bx + (this.R() - 0.5) * 2, p.y];
     }
     return [tx, ty];
+  };
+
+  // ======================================================================
+  // CÓRNERS: rutina ofensiva + organización defensiva + papeles de cada jugador
+  // ======================================================================
+  MP.CORNER_ROUTINES = {
+    primer: 'centro al primer palo', segundo: 'centro al segundo palo', punto: 'centro al punto de penalti', portero: 'balón entre portero y defensa',
+    corto: 'córner en corto', atras: 'pase atrás al borde del área',
+  };
+  MP.aerial = function (p) { return p.a.agr * 0.35 + p.d.ovr * 0.4 + p.a.res * 0.1 + (p.role === 'DFC' || p.role === 'DC' ? 9 : 0); };
+  MP.planCorner = function (s, cx, cy) {
+    const o = 1 - s; const dir = this.dir[s]; const gx = this.oppGoalX(s);
+    const X = (d) => gx - dir * d;                           // d metros desde la línea de fondo hacia dentro
+    const sg = cy < PW / 2 ? -1 : 1;                          // lado del córner (primer palo)
+    const Y = (k) => PW / 2 + sg * k;                         // k > 0: hacia el primer palo
+    this.cornerN = (this.cornerN || 0) + 1;
+    const RR = U.rng(((this.cfg.seed || 1) * 977 + this.cornerN * 131 + s * 7) >>> 0);   // variación controlada y reproducible
+    const jit = (v) => v + (RR() - 0.5) * 2 * 1.1;
+    const tac = this.tac[s], tacO = this.tac[o];
+    const gd = this.score[s] - this.score[o]; const late = this.t > 75;
+    const taker = this.restart.taker;
+    const att = this.active(s).filter((p) => !p.isGK && p !== taker);
+    const def = this.active(o).filter((p) => !p.isGK);
+    // --- quién se queda atrás: dos de vigilancia (tres si se defiende un resultado, uno si hay que remontar)
+    const nBack = U.clamp(2 + (gd > 0 && late ? 1 : 0) - (gd < 0 && late ? 1 : 0) + (tac.style === 'defensiva' ? 1 : 0) - (tac.style === 'ofensiva' ? 1 : 0), 1, 3);
+    const byAir = att.slice().sort((a, b) => this.aerial(b) - this.aerial(a));
+    const keepers = att.filter((p) => byAir.indexOf(p) >= 3).sort((a, b) => (b.line === 'DEF' ? 10 : 0) + b.a.vel * 0.1 - (a.line === 'DEF' ? 10 : 0) - a.a.vel * 0.1).slice(0, nBack);
+    let pool = att.filter((p) => keepers.indexOf(p) < 0);
+    const airTop = byAir.slice(0, 3).reduce((v, p) => v + this.aerial(p), 0) / 3;
+    const airDef = def.slice().sort((a, b) => this.aerial(b) - this.aerial(a)).slice(0, 3).reduce((v, p) => v + this.aerial(p), 0) / 3;
+    // --- esquema defensivo del rival: zonal, individual o mixto (según su plan, con variación)
+    const schemeR = RR();
+    const scheme = tacO.style === 'defensiva' ? (schemeR < 0.65 ? 'zonal' : 'mixto') : tacO.press === 'alta' ? (schemeR < 0.6 ? 'individual' : 'mixto') : (schemeR < 0.34 ? 'zonal' : schemeR < 0.67 ? 'individual' : 'mixto');
+    // --- rutina: depende del juego aéreo propio y rival, del plan de juego y del marcador
+    const wts = { primer: 1, segundo: 1, punto: 0.9, portero: 0.45, corto: 0.4, atras: 0.4 };
+    const edgeAir = airTop - airDef;
+    wts.segundo *= 1 + U.clamp(edgeAir * 0.04, -0.4, 0.6); wts.punto *= 1 + U.clamp(edgeAir * 0.03, -0.4, 0.5);
+    if (tac.passing === 'corto') { wts.corto *= 2.2; wts.atras *= 2; }
+    if (tac.passing === 'largo') { wts.segundo *= 1.3; wts.punto *= 1.3; wts.corto *= 0.5; }
+    if (edgeAir < -4) { wts.corto *= 1.8; wts.atras *= 1.6; wts.primer *= 1.3; }
+    if (scheme === 'zonal') wts.primer *= 1.35; else if (scheme === 'individual') wts.punto *= 1.25;
+    if (gd < 0 && late) { wts.portero *= 1.8; wts.punto *= 1.3; wts.corto *= 0.5; }
+    if (this.lastCornerRoutine && this.lastCornerRoutine[s]) wts[this.lastCornerRoutine[s]] *= 0.55;   // no repetir siempre la misma
+    const keys = Object.keys(wts); let tot = 0; keys.forEach((k) => { tot += wts[k]; });
+    let r = RR() * tot, routine = keys[0]; for (const k of keys) { r -= wts[k]; if (r <= 0) { routine = k; break; } }
+    this.lastCornerRoutine = this.lastCornerRoutine || [null, null]; this.lastCornerRoutine[s] = routine;
+    // --- papeles ofensivos
+    const pos = new Map(), role = new Map(), run = new Map(), mark = new Map();
+    const take = (pred) => { const i = pool.findIndex(pred); if (i < 0) return pool.length ? pool.shift() : null; return pool.splice(i, 1)[0]; };
+    const air = () => { pool.sort((a, b) => this.aerial(b) - this.aerial(a)); return pool.shift() || null; };
+    const shooter = () => { pool.sort((a, b) => b.a.tir - a.a.tir); const i = pool.findIndex((q) => q.line !== 'DEF'); return i >= 0 ? pool.splice(i, 1)[0] : pool.shift() || null; };
+    const zone = { primer: [jit(5.3), Y(jit(2.6))], segundo: [jit(6.2), Y(-jit(3.4))], punto: [jit(11), Y(jit(0.3))], portero: [jit(3.6), Y(jit(0.8))] };
+    let target = null, extra = null;
+    const setA = (p, start, go, rl) => { if (!p) return; pos.set(p, [X(start[0]), start[1]]); role.set(p, rl); if (go) run.set(p, [X(go[0]), go[1]]); };
+    if (routine === 'corto') {
+      extra = take((q) => q.line === 'MED' || q.role === 'ED' || q.role === 'EI');
+      setA(extra, [jit(2.5), Y(PW / 2 - 9)], null, 'corto');
+      target = air(); setA(target, [jit(12), Y(jit(1))], [jit(6.5), Y(-jit(1.5))], 'rematador');
+    } else if (routine === 'atras') {
+      extra = shooter(); setA(extra, [jit(19), Y(jit(6))], [jit(15), Y(jit(4.5))], 'pase atrás');
+      target = air(); setA(target, [jit(9), Y(jit(2))], [jit(5), Y(jit(3))], 'arrastre');
+    } else {
+      target = air();
+      const startFar = routine === 'primer' ? [jit(11), Y(-jit(2))] : routine === 'segundo' ? [jit(10), Y(jit(1))] : routine === 'punto' ? [jit(15), Y(jit(2))] : [jit(9), Y(jit(1.5))];
+      setA(target, startFar, zone[routine], 'rematador');
+    }
+    // arrastre al primer palo para liberar al rematador
+    const decoy = air(); setA(decoy, [jit(8.5), Y(jit(1))], [jit(4.2), Y(jit(3.2))], 'arrastre');
+    // segundo rematador: ataca la zona libre
+    const second = air(); const freeZ = routine === 'segundo' ? zone.punto : routine === 'punto' ? zone.segundo : zone.segundo;
+    setA(second, [jit(13), Y(-jit(1))], freeZ, 'segundo rematador');
+    // llegada desde segunda línea
+    const late2 = shooter(); setA(late2, [jit(20), Y(-jit(3))], [jit(12.5), Y(-jit(1.5))], 'llegada');
+    // borde del área: rechaces y disparo
+    const edge = shooter(); setA(edge, [jit(19), Y(-jit(7))], null, 'rechace');
+    pool.forEach((p, i) => setA(p, [jit(7 + i * 3), Y(jit(i % 2 ? 4 : -4))], null, 'área'));
+    keepers.forEach((p, i) => { pos.set(p, [this.wx(s, 0.5 + 0.05 * (i % 2)), PW / 2 + (i - (keepers.length - 1) / 2) * 14]); role.set(p, 'vigilancia'); });
+    // --- defensa
+    const defs = def.slice();
+    const nUp = U.clamp(tacO.style === 'ofensiva' ? 2 : tacO.style === 'defensiva' ? 0 : 1, 0, 2);
+    const ups = defs.filter((p) => p.line === 'DEL').sort((a, b) => b.a.vel - a.a.vel).slice(0, nUp);
+    ups.forEach((p, i) => { pos.set(p, [this.wx(o, 0.62 + 0.05 * i), PW / 2 + (i ? 9 : -9)]); role.set(p, 'contraataque'); });
+    let free = defs.filter((p) => ups.indexOf(p) < 0);
+    const threats = att.filter((p) => ['rematador', 'segundo rematador', 'arrastre', 'llegada', 'área'].indexOf(role.get(p)) >= 0).sort((a, b) => this.aerial(b) - this.aerial(a));
+    const zones = [[0.6, Y(GOAL_W / 2 - 0.4), 'primer palo'], [5.5, Y(jit(2.5)), 'zona'], [5.5, Y(-jit(1.5)), 'zona'], [6.5, Y(-jit(5.5)), 'zona'], [10, Y(jit(0.5)), 'zona'], [0.6, Y(-(GOAL_W / 2 - 0.4)), 'segundo palo']];
+    const nZone = scheme === 'zonal' ? 6 : scheme === 'mixto' ? 3 : 1;
+    // marcadores: los mejores en juego aéreo y defensa, sobre los atacantes más peligrosos
+    if (scheme !== 'zonal') {
+      threats.slice(0, Math.max(0, free.length - nZone - 1)).forEach((t) => {
+        free.sort((a, b) => (this.aerial(b) + b.a.dfn * 0.4) - (this.aerial(a) + a.a.dfn * 0.4));
+        const d = free.shift(); if (!d) return; mark.set(d, t); role.set(d, 'marcaje');
+        const tp = pos.get(t) || [t.x, t.y]; const a = Math.atan2(PW / 2 - tp[1], gx - tp[0]);
+        pos.set(d, [tp[0] + Math.cos(a) * 0.9, tp[1] + Math.sin(a) * 0.9]);
+      });
+    }
+    // zonas: los que quedan, primero el palo y la línea del área pequeña
+    zones.slice(0, nZone).forEach((z) => { const d = free.shift(); if (!d) return; pos.set(d, [X(z[0]), z[1]]); role.set(d, z[2]); });
+    // uno al borde del área para los rechaces y el resto, cerca del punto de penalti
+    const ed = free.sort((a, b) => b.a.vel - a.a.vel).shift(); if (ed) { pos.set(ed, [X(jit(18)), Y(-jit(4))]); role.set(ed, 'borde'); }
+    free.forEach((d, i) => { pos.set(d, [X(jit(8 + i * 2.5)), Y(jit(i % 2 ? 3 : -3))]); role.set(d, 'zona'); });
+    // nadie dentro del círculo de 9,15 m del saque
+    pos.forEach((v, p) => { if (p.side === o && U.dist(v[0], v[1], cx, cy) < 9.3) { const a = Math.atan2(v[1] - cy, v[0] - cx); v[0] = cx + Math.cos(a) * 9.4; v[1] = cy + Math.sin(a) * 9.4; } });
+    return { routine, scheme, pos, role, run, mark, target, extra, s };
+  };
+  MP.cornerReady = function () {
+    const rs = this.restart; const plan = rs.plan; const waited = this.realT - rs.t0;
+    if (waited > 6.5) return true;
+    if (U.dist(rs.taker.x, rs.taker.y, rs.taker.tx, rs.taker.ty) > 0.8) return false;
+    let n = 0, ok = 0; plan.pos.forEach((v, p) => { if (p.off) return; n++; if (U.dist(p.x, p.y, v[0], v[1]) < 2.2) ok++; });
+    return waited > 1.6 && ok >= n * 0.85;
+  };
+  MP.takeCorner = function (p, plan) {
+    const s = p.side; const gx = this.oppGoalX(s); const dir = this.dir[s];
+    this.cornerCtx = { plan, until: this.realT + 3.2 };
+    this.say('corner_routine', { side: s, routine: plan.routine, scheme: plan.scheme });
+    const t = plan.target && !plan.target.off ? plan.target : null;
+    if (plan.routine === 'corto' && plan.extra && !plan.extra.off) { this.pass(p, plan.extra, plan.extra.x, plan.extra.y, false); return; }
+    if (plan.routine === 'atras' && plan.extra && !plan.extra.off) { const z = plan.run.get(plan.extra) || [plan.extra.x, plan.extra.y]; plan.extra.runX = z[0]; plan.extra.runY = z[1]; plan.extra.runT = 1.2; this.pass(p, plan.extra, z[0], z[1], false); return; }
+    if (t) {
+      const z = plan.run.get(t) || [gx - dir * 8, PW / 2];
+      t.runX = z[0]; t.runY = z[1]; t.runT = 1.8;
+      this.pass(p, t, z[0], z[1], true); this.ball.type = 'cross';
+      return;
+    }
+    const r = this.active(s).filter((q) => q !== p && this.inBox(1 - s, q.x, q.y))[0];
+    if (r) this.cross(p, r); else this.longBall(p);
+  };
+  // movimiento de cada uno durante la jugada de córner (antes de que el balón se resuelva)
+  MP.cornerMove = function (p) {
+    const plan = this.cornerCtx.plan; const rl = plan.role.get(p); if (!rl) return null;
+    if (p.side === plan.s) {
+      const r = plan.run.get(p); if (r) return [r[0], r[1], 1];
+      const q = plan.pos.get(p); return q ? [q[0], q[1], 0.7] : null;
+    }
+    const m = plan.mark.get(p);
+    if (m && !m.off) { const gx = this.oppGoalX(plan.s); const a = Math.atan2(PW / 2 - m.y, gx - m.x); return [m.x + Math.cos(a) * 0.8, m.y + Math.sin(a) * 0.8, 1]; }
+    const q = plan.pos.get(p); return q ? [q[0], q[1], 0.9] : null;
   };
 
   MP.gkPosition = function (p) {
@@ -716,7 +869,7 @@
     b.last = p; b.kickBy = p; b.kickCd = 0.22; b.type = type; b.target = target || null; b.shotSaveTried = false; b.otCounted = false; b.magnet = 0; b.curveT = 0; b.softLand = false;
     b.offside = target && this.isOffside(target) ? target : null;
     b.shotFrom = type === 'shot' ? [p.x, p.y] : null;
-    p.kickCd = 0.3; p.state = 'kick'; p.stateT = 0.18;
+    p.kickCd = 0.3; p.state = 'kick'; p.stateT = type === 'shot' ? 0.26 : 0.18;
     if (this.hooks.sound) this.hooks.sound(type === 'shot' ? 'shot' : 'kick', this);
     this.computeChasers();
   };
@@ -1157,20 +1310,33 @@
       const down = p.state === 'down' || p.state === 'stumble';
       let maxSp = this.speedOf(p) * (down ? 0.1 : 1);
       if (b.owner === p) maxSp *= 0.86 + p.a.reg / 1000;
-      const want = calm ? Math.min(p.want, 0.75) : p.want;
+      const want = calm && !(this.restart && this.restart.plan) ? Math.min(p.want, 0.75) : p.want;   // en los córners se llega rápido al área
       let dx = p.tx - p.x, dy = p.ty - p.y; const d = Math.hypot(dx, dy);
       let desV = d > 0.25 ? Math.min(maxSp * want, d * 2.6) : 0;
       let dvx = d > 0 ? dx / d * desV : 0, dvy = d > 0 ? dy / d * desV : 0;
       if (p.state === 'slide') { p.vx *= 1 - 2.2 * dt; p.vy *= 1 - 2.2 * dt; dvx = p.vx; dvy = p.vy; } // la segada frena poco a poco
-      const acc = 11 * dt;
+      // aceleración propia: los rápidos arrancan antes; el cansancio la reduce
+      const acc = U.clamp(8.2 + (p.a.vel - 60) * 0.06, 7, 13) * (0.75 + 0.25 * p.stam) * dt;
       p.vx += U.clamp(dvx - p.vx, -acc, acc); p.vy += U.clamp(dvy - p.vy, -acc, acc);
-      // separación entre jugadores
+      // separación: compañeros (1,2 m) y rivales (0,9 m, salvo en el duelo por el balón)
       for (const q of this.P[s]) { if (q === p || q.off) continue; const ddx = p.x - q.x, ddy = p.y - q.y; const dd = ddx * ddx + ddy * ddy; if (dd < 1.4 && dd > 0.0001) { const k = (1.4 - dd) * 2.5 * dt; p.vx += ddx * k; p.vy += ddy * k; } }
+      if (b.owner !== p) for (const q of this.P[1 - s]) { if (q.off || b.owner === q) continue; const ddx = p.x - q.x, ddy = p.y - q.y; const dd = ddx * ddx + ddy * ddy; if (dd < 0.8 && dd > 0.0001) { const k = (0.8 - dd) * 2 * dt; p.vx += ddx * k; p.vy += ddy * k; } }
       p.x += p.vx * dt; p.y += p.vy * dt;
       p.x = U.clamp(p.x, -3, PL + 3); p.y = U.clamp(p.y, -3, PW + 3);
       const sp = Math.hypot(p.vx, p.vy);
-      if (sp > 0.4) p.face = Math.atan2(p.vy, p.vx);
-      else if (b) p.face = Math.atan2(b.y - p.y, b.x - p.x);
+      // orientación: hacia donde corre; al recular despacio, de cara al balón; giro progresivo (sin giros imposibles)
+      let fa = p.face;
+      const toBall = b ? Math.atan2(b.y - p.y, b.x - p.x) : p.face;
+      p.back = false; p.side2 = false;
+      if (sp > 0.4) {
+        const mv = Math.atan2(p.vy, p.vx); let dif = Math.abs(((mv - toBall + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (b.owner !== p && sp < 4.6 && dif > 2.2 && !p.isGK) { fa = toBall; p.back = true; }
+        else if (b.owner !== p && sp < 3.2 && dif > 1.1 && dif <= 2.2) { fa = toBall; p.side2 = true; }
+        else fa = mv;
+      } else if (b) fa = toBall;
+      let dfa = ((fa - p.face + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const turn = (b.owner === p ? 7 : 10) * dt;
+      p.face += U.clamp(dfa, -turn, turn);
       p.anim += sp * dt * 2.4; p.run = sp;
       // cansancio
       // desgaste según el esfuerzo (sprints, presión) y la resistencia del jugador
@@ -1274,7 +1440,7 @@
     }
     b.offside = null;
     // remate de cabeza / volea en el área rival
-    if (b.z > 0.9 && this.inBox(1 - s, b.x, b.y) && !p.isGK && (b.type === 'cross' || b.type === 'pass')) {
+    if (b.z > (b.type === 'cross' ? 0.55 : 0.9) && this.inBox(1 - s, b.x, b.y) && !p.isGK && (b.type === 'cross' || b.type === 'pass')) {
       p.st.touch++;
       b.last = p; b.owner = null;
       if (this.R() < 0.75) { this.header(p); return; }
@@ -1282,6 +1448,7 @@
     if (b.z > 0.9 && this.inBox(s, b.x, b.y) && !p.isGK && b.last && b.last.side !== s) {
       p.st.touch++; b.owner = null;
       if (this.R() < 0.22) this.kick(p, -this.dir[s] * (4 + this.R() * 4), (this.R() - 0.5) * 16, 3, 'loose', null);
+      else if (this.R() < 0.3) { const sy = b.y < PW / 2 ? -1 : 1; this.kick(p, -this.dir[s] * (6 + this.R() * 4), sy * (9 + this.R() * 6), 5, 'clear', null); }   // despeje a córner
       else this.kick(p, this.dir[s] * (8 + this.R() * 7), (this.R() - 0.5) * 18, 4 + this.R() * 3, 'clear', null);
       return;
     }
@@ -1314,6 +1481,7 @@
     const h = 0.4 + this.R() * 2.4;
     p.st.shots++; this.stats.shots[s]++;
     this.kick(p, Math.cos(a) * speed, Math.sin(a) * speed, (h - 1.8 + 0.5 * GRAV * T * T) / T, 'shot', null);
+    p.state = 'jump'; p.stateT = 0.4;
     this.say('header', { pid: p.d.id, side: s });
   };
 
@@ -1346,7 +1514,10 @@
     if (!onTarget) { if (lat < reach * 0.6 && this.R() < 0.5) this.saveBall(gk, false); return; }
     if (this.director) {   // los tiros de la física no deciden el marcador: parada o rozando el palo
       if (lat <= reach + 0.6) { this.saveBall(gk, true); return; }
-      const post = yAtGoal < PW / 2 ? GY1 - 0.7 : GY2 + 0.7; b.vy = (post - b.y) / Math.max(0.05, tGoal); return;
+      const post = yAtGoal < PW / 2 ? GY1 - 0.7 : GY2 + 0.7; b.vy = (post - b.y) / Math.max(0.05, tGoal);
+      // a veces el balón toca en un defensa: córner
+      if (this.R() < 0.4) { const d = this.active(s).filter((q) => !q.isGK).sort((a2, c) => U.dist(a2.x, a2.y, b.x, b.y) - U.dist(c.x, c.y, b.x, b.y))[0]; if (d) b.last = d; }
+      return;
     }
     if (lat > reach + 0.35) return;
     const sp = Math.hypot(b.vx, b.vy);
@@ -1367,7 +1538,7 @@
       this.say('catch', { pid: gk.d.id, side: s });
     } else {
       const out = this.dir[s]; const dd = gk.diveDir || 1;
-      if (this.R() < 0.45) { // despeje a córner (por encima o junto al poste)
+      if (this.R() < (this.director ? 0.62 : 0.45)) { // despeje a córner (por encima o junto al poste)
         b.vx = -out * (3 + this.R() * 2); b.vy = dd * (9 + this.R() * 5); b.vz = 5 + this.R() * 3;
       } else {
         b.vx = out * (3 + this.R() * 5); b.vy = dd * sp * (0.2 + this.R() * 0.25); b.vz = 1.5 + this.R() * 3;
@@ -1445,6 +1616,7 @@
     }
     // (los saques de la persona se resuelven en step/humanRestartButton; aquí solo llega la máquina)
     if (rs.type === 'penalty') { this.lastRestartPenalty = true; this.shoot(p, this.R() < 0.5 ? -0.7 : 0.7, 0.85); this.ball.shotFrom = [p.x, p.y]; return; }
+    if (rs.type === 'corner' && rs.plan) { this.takeCorner(p, rs.plan); return; }
     if (rs.type === 'corner') {
       const tgt = this.active(s).filter((q) => q !== p && this.inBox(1 - s, q.x, q.y)).sort((a, c) => (c.a.agr + c.d.ovr * 0.5) - (a.a.agr + a.d.ovr * 0.5));
       const r = tgt[Math.floor(this.R() * Math.min(3, tgt.length))];
@@ -1460,8 +1632,9 @@
     }
     if (rs.type === 'goalkick' && s === this.human && p.isGK) { this.ctrl = p; p.gkHold = 0; return; }
     if (rs.type === 'goalkick') {
-      const bp = this.bestPass(p);
-      if (bp && bp.pOk > 0.6 && this.R() < 0.5) this.pass(p, bp.r, bp.tx, bp.ty, bp.loft); else this.longBall(p);
+      const bp = this.bestPass(p); const pc = this.tac[s].passing;
+      const shortP = pc === 'corto' ? 0.78 : pc === 'largo' ? 0.15 : 0.45;   // salida en corto o en largo según el plan
+      if (bp && bp.pOk > 0.55 && this.R() < shortP) this.pass(p, bp.r, bp.tx, bp.ty, bp.loft); else this.longBall(p);
       return;
     }
     const bp = this.bestPass(p);

@@ -194,12 +194,17 @@
   // ---------- jugadores
   RP.drawPlayer = function (g, p, kit, isRef) {
     const run = Math.min(1, (p.run || 0) / 6.5);
-    const sw = Math.sin(p.anim) * 0.34 * run;
+    // zancada: más larga al esprintar; corta al recular; pasos laterales al bascular
+    const stride = p.back ? 0.2 : p.side2 ? 0 : 0.34 * (0.6 + 0.4 * run);
+    const sw = Math.sin(p.anim * (p.back ? 1.4 : 1)) * stride * run;
     const k = this.k; // exageración para que se vean bien con el campo entero o en el móvil
+    const jump = p.state === 'jump' ? Math.sin(Math.PI * U.clamp(1 - p.stateT / 0.4, 0, 1)) : 0;
     g.save(); g.translate(p.x, p.y);
-    // sombra
-    g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(0.32, 0.38, 0.5 * k, 0.32 * k, 0.5, 0, 7); g.fill();
-    g.rotate(p.face || 0); g.scale(k, k);
+    // poseedor del balón: aro discreto en el suelo
+    if (!isRef && this.m.ball.owner === p) { g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 0.09; g.beginPath(); g.ellipse(0, 0, 0.62 * k, 0.5 * k, 0, 0, 7); g.stroke(); }
+    // sombra (se separa del jugador cuando salta)
+    g.fillStyle = 'rgba(0,0,0,' + (0.28 - jump * 0.1) + ')'; g.beginPath(); g.ellipse(0.32 + jump * 0.5, 0.38 + jump * 0.5, 0.5 * k, 0.32 * k, 0.5, 0, 7); g.fill();
+    g.rotate(p.face || 0); g.scale(k * (1 + jump * 0.16), k * (1 + jump * 0.16));
     const skin = isRef ? SKIN[2] : SKIN[p.d.tone] || SKIN[1];
     let diving = p.state === 'dive' ? (p.diveDir || 1) : 0;
     if (p.state === 'down') { g.rotate(Math.PI / 2); }
@@ -209,7 +214,11 @@
     g.lineCap = 'round';
     g.strokeStyle = sock; g.lineWidth = 0.17;
     if (p.state === 'slide') { g.beginPath(); g.moveTo(0, 0.12); g.lineTo(0.62, 0.18); g.stroke(); g.beginPath(); g.moveTo(0, -0.12); g.lineTo(0.3, -0.2); g.stroke(); }
-    else {
+    else if (p.side2 && run > 0.05) {   // paso lateral defensivo: piernas que se abren y se cierran
+      const o = 0.15 + Math.abs(Math.sin(p.anim * 1.3)) * 0.12;
+      g.beginPath(); g.moveTo(0, 0.1); g.lineTo(0.02, o); g.stroke();
+      g.beginPath(); g.moveTo(0, -0.1); g.lineTo(0.02, -o); g.stroke();
+    } else {
       g.beginPath(); g.moveTo(0, 0.13); g.lineTo(sw, 0.15); g.stroke();
       g.beginPath(); g.moveTo(0, -0.13); g.lineTo(-sw, -0.15); g.stroke();
       if (p.state === 'kick') { g.beginPath(); g.moveTo(0, 0.13); g.lineTo(0.5, 0.12); g.stroke(); }
