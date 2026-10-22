@@ -441,3 +441,12 @@ table.sqstats th .tab { letter-spacing: 0; padding: 2px 4px !important; }
 .lu-hint .btn { flex: none; }
 table.tbl.sq tr.fitpos td { background: #d6f0c9; }
 table.tbl.sq tr.fitpos:hover td { background: #c4e8b2; }
+/* plantilla (vista Datos): en pantallas estrechas la tabla se desliza de lado y el nombre queda fijo */
+@media (max-width: 560px) {
+  p.show-sm { display: block; }
+  table.sqdata td.stick, table.sqdata th.stick { position: sticky; left: 0; z-index: 2; box-shadow: 2px 0 0 rgba(0,0,0,.18); }
+  table.sqdata td.stick { background: var(--panel); }
+  table.sqdata tr:nth-child(even) td.stick { background: #d6d8da; }
+  table.sqdata th.stick { z-index: 4; background: #24461a; }
+  table.sqdata td, table.sqdata th { padding-left: 5px; padding-right: 5px; }
+}
