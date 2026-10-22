@@ -14,7 +14,8 @@
   LG.CUP_PRIZE = [0.3, 0.6, 1, 2, 3, 3];   // M€ por superar cada ronda (y 6 M€ más para el campeón)
   // Premios por títulos (M€), según la importancia de la competición
   LG.TITLE_PRIZE = { liga: 15, segunda: 3, playoff: 2, copa: 6, supes: 8, supes_final: 5, supes_semi: 3 };
-  LG.MARKET_CLOSE = 29;   // el mercado se cierra desde la jornada 30 hasta la temporada siguiente
+  LG.MARKET_CLOSE = 29;
+  LG.MAX_CHANGES = 3;   // equipos de la IA: como mucho 3 caras nuevas (y 3 salidas) de una temporada a otra   // el mercado se cierra desde la jornada 30 hasta la temporada siguiente
   const ACH = (id, st) => { if (MF.ACH && (!st || !st.noAch)) MF.ACH.unlock(id); };
   LG.ach = ACH;
 
@@ -74,10 +75,75 @@
     LG.initStaff(st, R); LG.staffMarket(st, R);
     st.finance.start = t.budget;
     LG.news(st, '¡Bienvenido, ' + st.userName + '! La directiva del ' + t.name + ' te presenta como nuevo entrenador. Objetivo: ' + st.board.objective.text + '.', 'board');
-    LG.news(st, 'El mercado de fichajes está abierto durante toda la temporada.', 'market');
+    LG.news(st, 'El mercado de fichajes está abierto hasta la jornada 29.', 'market');
+    if (opts.team2 && opts.team2 !== opts.team) LG.addManager(st, opts.team2, opts.name2, R);
+    st.squadChg = {};
     LG.flushBackground(st);
     return st;
   };
+
+  // ---------- PARTIDA DE DOS JUGADORES (por turnos, mismo dispositivo)
+  // Los datos propios de cada mánager se guardan en st.mgrs; los del mánager activo están en el nivel superior de st.
+  LG.MGR_FIELDS = ['userTeam', 'userName', 'lineup', 'tactics', 'training', 'board', 'staff', 'staffMarket', 'offers', 'offerLog', 'youthUsed', 'finance', 'trophies', 'ach', 'lastUser', 'fired', 'outOfLeague', 'tacticBonus', 'lastAttendance'];
+  LG.isMulti = (st) => !!(st.mgrs && st.mgrs.length > 1);
+  LG.nMgrs = (st) => (st.mgrs ? st.mgrs.length : 1);
+  LG.switchTo = function (st, i) {
+    if (!LG.isMulti(st) || i === st.cur) return;
+    LG.MGR_FIELDS.forEach((k) => { st.mgrs[st.cur][k] = st[k]; });
+    LG.MGR_FIELDS.forEach((k) => { st[k] = st.mgrs[i][k]; });
+    st.cur = i;
+  };
+  LG.withMgr = function (st, i, fn) { const prev = st.cur; LG.switchTo(st, i); try { return fn(); } finally { LG.switchTo(st, prev); } };
+  LG.mgrTeam = (st, i) => (i === (st.cur || 0) ? st.userTeam : st.mgrs[i].userTeam);
+  LG.mgrIndexOf = function (st, tid) {
+    if (!LG.isMulti(st)) return tid === st.userTeam ? 0 : -1;
+    for (let i = 0; i < st.mgrs.length; i++) if (LG.mgrTeam(st, i) === tid) return i;
+    return -1;
+  };
+  LG.isManaged = (st, tid) => LG.mgrIndexOf(st, tid) >= 0;
+  LG.mgrData = function (st, tid) { const i = LG.mgrIndexOf(st, tid); if (i < 0) return null; return i === (st.cur || 0) ? st : st.mgrs[i]; };
+  // ejecuta fn con el mánager dueño de tid como activo (si lo hay)
+  LG.own = function (st, tid, fn) { const i = LG.mgrIndexOf(st, tid); if (i < 0 || !LG.isMulti(st) || i === st.cur) return fn(); return LG.withMgr(st, i, fn); };
+  LG.forEachMgr = function (st, fn) { if (!LG.isMulti(st)) { fn(0); return; } for (let i = 0; i < st.mgrs.length; i++) LG.withMgr(st, i, () => fn(i)); };
+  LG.addTrophy = function (st, tid, comp) { LG.own(st, tid, () => { if (tid === st.userTeam) { st.trophies = st.trophies || []; st.trophies.push({ season: st.season, comp, team: tid }); } }); };
+  // crea los datos del segundo mánager
+  LG.addManager = function (st, team, name, R) {
+    if (!st.mgrs) { st.mgrs = [{}]; st.cur = 0; LG.MGR_FIELDS.forEach((k) => { st.mgrs[0][k] = st[k]; }); }
+    const prev = st.cur; const i = st.mgrs.length; st.mgrs.push({});
+    LG.MGR_FIELDS.forEach((k) => { st.mgrs[prev][k] = st[k]; });
+    st.cur = i;
+    const t = st.world.teams[team];
+    Object.assign(st, { userTeam: team, userName: name || ('Míster ' + (i + 1)), tactics: { style: 'equilibrada', press: 'media', passing: 'mixto' }, training: 'equilibrado', board: null,
+      offers: [], offerLog: {}, youthUsed: false, finance: { log: [], start: t.budget }, trophies: [], ach: { cs: 0, unb: 0, ws: 0, seasons: 0, clubs: [team] }, lastUser: null, fired: false, outOfLeague: false, tacticBonus: 0, lastAttendance: 0 });
+    st.lineup = DB.autoLineup(st.world, team, t.formation);
+    LG.setObjective(st); LG.initStaff(st, R); LG.staffMarket(st, R);
+    LG.MGR_FIELDS.forEach((k) => { st.mgrs[i][k] = st[k]; });
+    LG.MGR_FIELDS.forEach((k) => { st[k] = st.mgrs[prev][k]; }); st.cur = prev;
+    LG.news(st, '¡Bienvenido, ' + st.mgrs[i].userName + '! La directiva del ' + t.name + ' te presenta como nuevo entrenador.', 'board');
+  };
+  // resultados ya jugados en esta jornada (partidos de cada mánager)
+  LG.takeRes = function (st, f, userRes) {
+    if (st.pendingRes && st.pendingRes[f.key]) return st.pendingRes[f.key];
+    if (userRes && (f.h === st.userTeam || f.a === st.userTeam)) return userRes;
+    return null;
+  };
+  // datos de la temporada (historial) del mánager activo
+  LG.histUser = function (st, h) {
+    if (h.users && h.users.length) { const u = h.users.find((x) => x.user.name === st.userName) || h.users[st.cur || 0] || h.users[0]; return u; }
+    return { user: h.user, report: h.report };
+  };
+  // un mánager abandona la partida (la otra persona sigue jugando sola)
+  LG.removeManager = function (st, i) {
+    if (!LG.isMulti(st)) return false;
+    LG.MGR_FIELDS.forEach((k) => { st.mgrs[st.cur][k] = st[k]; });
+    const name = st.mgrs[i].userName;
+    st.mgrs.splice(i, 1); if (st.turnDone) st.turnDone.splice(i, 1);
+    LG.MGR_FIELDS.forEach((k) => { st[k] = st.mgrs[0][k]; }); st.cur = 0;
+    if (st.mgrs.length === 1) { delete st.mgrs; delete st.cur; st.turnDone = null; }
+    LG.news(st, name + ' se retira de los banquillos.', 'board');
+    return true;
+  };
+  LG.involvesMgr = (st, f) => LG.isManaged(st, f.h) || LG.isManaged(st, f.a);
 
   LG.rng = function (st) { st.rngState = (st.rngState + 0x6D2B79F5) >>> 0; return U.rng(st.rngState); };
   LG.team = (st, id) => st.world.teams[id];
@@ -207,7 +273,7 @@
   LG.flushBackground = function (st, all) {
     for (let g = 0; g < 60; g++) {
       const ev = LG.nextEvent(st); if (!ev) return;
-      if (!all && LG.eventFixtures(st, ev).some((f) => f.h === st.userTeam || f.a === st.userTeam)) return;
+      if (!all && LG.eventFixtures(st, ev).some((f) => LG.involvesMgr(st, f))) return;
       LG.playEvent(st, ev, null);
     }
   };
@@ -234,7 +300,11 @@
     st.lineup = DB.validLineup(st.world, st.userTeam, st.lineup);
     return st.lineup;
   };
-  LG.lineupFor = (st, tid) => (tid === st.userTeam ? LG.userLineup(st) : LG.aiLineup(st, tid));
+  LG.lineupFor = function (st, tid) {
+    if (tid === st.userTeam) return LG.userLineup(st);
+    const M = LG.mgrData(st, tid); if (M) { M.lineup = DB.validLineup(st.world, tid, M.lineup); return M.lineup; }
+    return LG.aiLineup(st, tid);
+  };
 
   // ---------- PERSONAL DEL CLUB
   LG.STAFF_ROLES = [
@@ -297,7 +367,8 @@
   // estrellas del personal (0 = puesto vacante)
   LG.stf = function (st, role, tid) {
     tid = tid || st.userTeam;
-    if (tid === st.userTeam) { const x = st.staff && st.staff[role]; return x ? x.stars : 0; }
+    const M = LG.mgrData(st, tid);
+    if (M) { const x = M.staff && M.staff[role]; return x ? x.stars : 0; }
     return LG.aiStaffStars(LG.team(st, tid));
   };
   LG.staffWages = (st) => U.sum(Object.values(st.staff || {}).filter(Boolean), (x) => x.wage);
@@ -332,14 +403,15 @@
     if (st._tac[key]) return st._tac[key];
     const side = f.h === tid ? 0 : 1; const opp = side === 0 ? f.a : f.h;
     if (LG.team(st, tid).foreign && LG.team(st, opp).foreign) return LG.team(st, tid);
-    const Tt = [null, null]; Tt[1 - side] = opp === st.userTeam ? st.tactics : { style: 'equilibrada', press: 'media', passing: 'mixto' };
+    const Mo = LG.mgrData(st, opp);
+    const Tt = [null, null]; Tt[1 - side] = Mo ? Mo.tactics : { style: 'equilibrada', press: 'media', passing: 'mixto' };
     const R = U.rng(U.hash(key));
     const tac = SIM.bestTactic(st.world, L, Tt, side, !!f.neutral, 0.3 + 0.12 * LG.stf(st, 'segundo', tid), R);
     const keys = Object.keys(st._tac); if (keys.length > 400) keys.slice(0, 200).forEach((k) => delete st._tac[k]);
     st._tac[key] = tac; return tac;
   };
   LG.tacticsFor = function (st, tid, f, L) {
-    if (tid === st.userTeam) return st.tactics;
+    const M = LG.mgrData(st, tid); if (M) return M.tactics;
     if (!f || !L) return LG.team(st, tid);
     return LG.aiTactic(st, tid, f, L);
   };
@@ -402,39 +474,45 @@
     const fx = LG.dayFixtures(st);
     const played = new Set(); const summary = [];
     fx.forEach((f) => {
-      const isUser = f.h === st.userTeam || f.a === st.userTeam;
       const lh = LG.lineupFor(st, f.h), la = LG.lineupFor(st, f.a);
-      const res = isUser && userRes ? userRes : SIM.play(st.world, LG.simOpts(st, f, [lh, la], R));
+      const res = LG.takeRes(st, f, userRes) || SIM.play(st.world, LG.simOpts(st, f, [lh, la], R));
       LG.applyResult(st, f, res, [lh, la]);
       played.add(f.h); played.add(f.a);
       summary.push({ f, res });
-      if (isUser) { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); }
+      LG.userSides(st, f).forEach((tid) => LG.own(st, tid, () => { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); }));
     });
     LG.recover(st, played, true);
-    if (st.training === 'tecnico') LG.trainTechnical(st, R);
-    if (st.training === 'tactico') { st.tacticBonus = 1; DB.teamPlayers(st.world, st.userTeam).forEach((p) => { p.mor = U.clamp(p.mor + 0.5 + 0.3 * LG.stf(st, 'segundo'), 30, 99); }); } else st.tacticBonus = 0;
-    LG.finances(st, fx);
-    // el mercado de personal se renueva poco a poco
-    if (st.staffMarket && st.day % 6 === 5) { st.staffMarket.splice(R.int(0, st.staffMarket.length - 1), 1); st.staffMarket.splice(R.int(0, st.staffMarket.length - 1), 1); LG.staffMarket(st, R, true); }
+    LG.forEachMgr(st, () => {
+      if (st.training === 'tecnico') LG.trainTechnical(st, R);
+      if (st.training === 'tactico') { st.tacticBonus = 1; DB.teamPlayers(st.world, st.userTeam).forEach((p) => { p.mor = U.clamp(p.mor + 0.5 + 0.3 * LG.stf(st, 'segundo'), 30, 99); }); } else st.tacticBonus = 0;
+      LG.finances(st, fx);
+      // el mercado de personal se renueva poco a poco
+      if (st.staffMarket && st.day % 6 === 5) { st.staffMarket.splice(R.int(0, st.staffMarket.length - 1), 1); st.staffMarket.splice(R.int(0, st.staffMarket.length - 1), 1); LG.staffMarket(st, R, true); }
+    });
     LG.retirementNews(st, R);
     // mercado abierto toda la temporada: la IA ficha poco a poco y llegan ofertas cada pocas jornadas
     if (st.day === LG.MARKET_CLOSE - 1) LG.news(st, 'Se cierra el mercado de fichajes hasta la próxima temporada.', 'market');
     if (st.day >= LG.MARKET_CLOSE - 1) { /* mercado cerrado */ }
-    else if (st.day === 0) { LG.aiTransfers(st, R, 10); LG.incomingOffers(st, R); }
-    else { if (R() < 0.55) LG.aiTransfers(st, R, 1); if (st.day % 3 === 0) LG.incomingOffers(st, R); }
-    if (st.day >= LG.MARKET_CLOSE - 1) st.offers = [];
-    st.offers = st.offers.filter((o) => o.day >= st.day - 1);
+    else if (st.day === 0) { LG.aiTransfers(st, R, 10); LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
+    else { if (R() < 0.55) LG.aiTransfers(st, R, 1); if (st.day % 3 === 0) LG.forEachMgr(st, () => LG.incomingOffers(st, R)); }
+    LG.forEachMgr(st, () => { if (st.day >= LG.MARKET_CLOSE - 1) st.offers = []; st.offers = st.offers.filter((o) => o.day >= st.day - 1); });
     st.day++;
     // fin de liga regular de Segunda → playoff
     if (st.day === 42 && !st.playoff) LG.setupPlayoff(st);
     if (st.day === 44 && st.playoff && !st.playoff.final) LG.setupFinal(st);
     if (st.day > LG.LAST_DAY || (st.day >= 42 && !LG.dayFixtures(st).length && st.playoff && st.playoff.winner)) LG.endSeason(st);
-    LG.boardPressure(st);
-    if (!st.seasonOver && st.day >= 12 && st.day - (st.board.since || 0) >= 6 && st.board.conf <= 4) st.fired = true;
-    if (st.fired && !st.seasonOver) { LG.news(st, 'La directiva ha decidido prescindir de tus servicios.', 'board'); ACH('despedido', st); }
+    LG.forEachMgr(st, () => {
+      if (st.fired) return;
+      LG.boardPressure(st);
+      if (!st.seasonOver && st.day >= 12 && st.day - (st.board.since || 0) >= 6 && st.board.conf <= 4) st.fired = true;
+      if (st.fired && !st.seasonOver) { LG.news(st, 'La directiva del ' + LG.team(st, st.userTeam).short + ' ha decidido prescindir de ' + st.userName + '.', 'board'); ACH('despedido', st); }
+    });
     LG.flushBackground(st);
     return summary;
   };
+
+  // equipos dirigidos por personas en un partido
+  LG.userSides = (st, f) => [f.h, f.a].filter((tid, i, a) => LG.isManaged(st, tid) && a.indexOf(tid) === i);
 
   // ---------- retiradas anunciadas: a lo largo de la temporada algunos veteranos anuncian que lo dejan
   LG.willRetire = (p, R) => (p.age >= 38) || (p.age >= 35 && R() < 0.35) || (p.age >= 33 && p.ovr < 62 && R() < 0.4);
@@ -447,8 +525,14 @@
       if ((U.hash(p.name + st.season) % 27) + 8 !== st.day) return;
       const Rp = U.rng(U.hash(p.name + 'ret' + st.season));
       if (!LG.willRetire(p, Rp)) return;
+      // los equipos de la IA pierden como mucho 3 jugadores por temporada (para que sigan siendo reconocibles)
+      if (!LG.isManaged(st, p.team) && t.div <= 2) {
+        st.squadChg = st.squadChg || {}; const c = st.squadChg[p.team] = st.squadChg[p.team] || { in: 0, out: 0 };
+        if (c.out >= LG.MAX_CHANGES) return;
+        c.out++;
+      }
       p.retiring = true;
-      if (p.team === st.userTeam || p.ovr >= 78) LG.news(st, p.name + ' (' + t.short + ') anuncia que se retirará al final de la temporada. Ya no puede ser traspasado.', 'info');
+      if (LG.isManaged(st, p.team) || p.ovr >= 78) LG.news(st, p.name + ' (' + t.short + ') anuncia que se retirará al final de la temporada. Ya no puede ser traspasado.', 'info');
     });
   };
 
@@ -456,14 +540,14 @@
   LG.recover = function (st, played, tick) {
     Object.values(st.world.players).forEach((p) => {
       const t = st.world.teams[p.team]; if (!t || t.div > 2) { p.fit = 100; return; }
-      const user = p.team === st.userTeam;
+      const M = LG.mgrData(st, p.team); const user = !!M;
       let rec = 15;
-      if (user) rec = ({ equilibrado: 15, fisico: 19, tecnico: 13, tactico: 14, descanso: 24 }[st.training] || 15) + (LG.stf(st, 'fisico') - 2) * 1.5;
+      if (user) rec = ({ equilibrado: 15, fisico: 19, tecnico: 13, tactico: 14, descanso: 24 }[M.training] || 15) + (LG.stf(st, 'fisico', p.team) - 2) * 1.5;
       p.fit = Math.min(100, p.fit + rec);
-      if (user && tick) p.mor = U.clamp(p.mor + (75 - p.mor) * 0.02 * LG.stf(st, 'psico'), 30, 99);
+      if (user && tick) p.mor = U.clamp(p.mor + (75 - p.mor) * 0.02 * LG.stf(st, 'psico', p.team), 30, 99);
       if (tick && played.has(p.team)) {
         if (p.inj > 0) p.inj--;
-        if (p.inj > 0 && user && (U.hash(p.id + '_' + st.day + '_' + st.season) % 100) < LG.stf(st, 'fisio') * 8) p.inj--;   // el recuperador acelera la vuelta
+        if (p.inj > 0 && user && (U.hash(p.id + '_' + st.day + '_' + st.season) % 100) < LG.stf(st, 'fisio', p.team) * 8) p.inj--;   // el recuperador acelera la vuelta
         if (p.sus > 0 && !p._justSus) p.sus--;
       }
       if (tick) p._justSus = false;
@@ -520,21 +604,21 @@
     res.events.forEach((e) => {
       const p = w.players[e.pid]; if (!p) return;
       if (e.type === 'goal' && !e.own) { p.st.g++; if (e.assist && w.players[e.assist]) w.players[e.assist].st.a++; }
-      if (e.type === 'yellow') { p.st.ta++; p.yel++; if (p.yel >= 5) { p.yel = 0; p.sus = Math.max(p.sus, 1); p._justSus = true; if (p.team === st.userTeam) LG.news(st, p.name + ' cumple ciclo de amarillas: 1 partido de sanción.', 'sus'); } }
-      if (e.type === 'red') { p.st.tr++; p.sus = Math.max(p.sus, e.second ? 1 : 2); p._justSus = true; if (p.team === st.userTeam) LG.news(st, p.name + ' es expulsado y será baja ' + p.sus + ' partido(s).', 'sus'); }
-      if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (p.team === st.userTeam) LG.news(st, 'Lesión: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
+      if (e.type === 'yellow') { p.st.ta++; p.yel++; if (p.yel >= 5) { p.yel = 0; p.sus = Math.max(p.sus, 1); p._justSus = true; if (LG.isManaged(st, p.team)) LG.news(st, p.name + ' cumple ciclo de amarillas: 1 partido de sanción.', 'sus'); } }
+      if (e.type === 'red') { p.st.tr++; p.sus = Math.max(p.sus, e.second ? 1 : 2); p._justSus = true; if (LG.isManaged(st, p.team)) LG.news(st, p.name + ' es expulsado y será baja ' + p.sus + ' partido(s).', 'sus'); }
+      if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
     });
     // moral de equipo y confianza de la directiva
     [f.h, f.a].forEach((tid, s) => {
       const t = w.teams[tid]; const gf = res.score[s], ga = res.score[1 - s];
       const ps = LG.stf(st, 'psico', tid);
       t.mor = U.clamp((t.mor || 70) + (gf > ga ? 4 : gf < ga ? -4 * (1.25 - 0.11 * ps) : 0), 30, 99);
-      if (tid === st.userTeam && f.comp !== 'playoff') {
+      if (LG.isManaged(st, tid) && f.comp !== 'playoff') LG.own(st, tid, () => {
         const myS = DB.teamStrength(w, tid), opS = DB.teamStrength(w, s === 0 ? f.a : f.h);
         const exp = U.clamp(1.35 + (myS - opS) * 0.09 + (s === 0 ? 0.2 : -0.1), 0.4, 2.3);
         const pts = gf > ga ? 3 : gf === ga ? 1 : 0;
         st.board.conf = U.clamp(st.board.conf + (pts - exp) * 1.9 + (58 - st.board.conf) * 0.03, 0, 100);
-      }
+      });
     });
   };
 
@@ -549,7 +633,7 @@
   LG.ticketIncome = function (st, t, oppId) {
     const pos = LG.position(st, t.id) || 10; const n = st.comp[t.div].teams.length;
     const base = t.div === 1 ? 45 : 22;
-    let fill = 0.62 + (t.mor - 70) * 0.004 + (1 - pos / n) * 0.18 - (t.ticket - base) * 0.007 + (t.id === st.userTeam ? 0.025 * (LG.stf(st, 'marketing') - 2) : 0);
+    let fill = 0.62 + (t.mor - 70) * 0.004 + (1 - pos / n) * 0.18 - (t.ticket - base) * 0.007 + (LG.isManaged(st, t.id) ? 0.025 * (LG.stf(st, 'marketing', t.id) - 2) : 0);
     if (oppId && ['rma', 'fcb', 'atm'].indexOf(oppId) >= 0) fill += 0.12;
     fill = U.clamp(fill, 0.2, 1);
     const att = Math.round(t.cap * fill);
@@ -559,12 +643,12 @@
   LG.attendance = function (st, f) {
     const t = LG.team(st, f.h);
     if (f.neutral) { const cap = (f.comp === 'cup' && st.cup && st.cup.venue && LG.team(st, st.cup.venue.tid)) ? LG.team(st, st.cup.venue.tid).cap : 62000; return { att: Math.round(cap * (0.9 + (U.hash(f.key + st.season) % 9) / 100)), cap }; }
-    if (t.id === st.userTeam && t.div <= 2) { const ti = LG.ticketIncome(st, t, f.a); return { att: ti.att, cap: t.cap }; }
+    if (LG.isManaged(st, t.id) && t.div <= 2) { const ti = LG.ticketIncome(st, t, f.a); return { att: ti.att, cap: t.cap }; }
     const o = LG.team(st, f.a); const big = typeof f.comp === 'string' && f.comp !== 'playoff' ? 0.12 : 0;
     const fill = U.clamp(0.58 + ((t.mor || 70) - 70) * 0.004 + (((o && o.base) || 70) - 70) * 0.01 + big + ((U.hash(f.key + st.season) % 10) - 5) / 100, 0.3, 1);
     return { att: Math.round(t.cap * fill), cap: t.cap };
   };
-  LG.tvIncome = (t, st) => (t.div === 1 ? Math.max(0.55, 0.6 + (t.base - 70) * 0.085) : 0.2) * (st && t.id === st.userTeam ? 0.93 + 0.035 * LG.stf(st, 'marketing') : 1);
+  LG.tvIncome = (t, st) => (t.div === 1 ? Math.max(0.55, 0.6 + (t.base - 70) * 0.085) : 0.2) * (st && LG.isManaged(st, t.id) ? 0.93 + 0.035 * LG.stf(st, 'marketing', t.id) : 1);
   LG.wageBill = (st, tid) => U.sum(DB.teamPlayers(st.world, tid), (p) => p.wage);
 
   LG.finances = function (st, fx) {
@@ -585,6 +669,7 @@
 
   // ingreso de premios (con apunte en las finanzas del usuario)
   LG.prize = function (st, tid, amount, text) {
+    if (LG.isMulti(st) && LG.isManaged(st, tid) && tid !== st.userTeam) return LG.own(st, tid, () => LG.prize(st, tid, amount, text));
     const t = LG.team(st, tid); if (!t || t.foreign || !amount) return;
     t.budget = Math.round((t.budget + amount) * 100) / 100;
     if (tid === st.userTeam) { st.finance.log.unshift({ s: st.season, d: st.day, inc: amount, exp: 0, items: [[text, amount]], bal: t.budget }); LG.news(st, text + ': ' + U.money(amount) + '.', 'market'); }
@@ -605,6 +690,9 @@
     const w = st.world; const p = w.players[pid]; const me = LG.team(st, st.userTeam);
     if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado desde la jornada 30 hasta la próxima temporada.' };
     if (!p || p.team === st.userTeam) return { ok: false, msg: 'Jugador no disponible.' };
+    if (LG.isManaged(st, p.team)) return { ok: false, msg: 'El ' + LG.team(st, p.team).short + ' lo dirige el otro mánager: no se puede negociar con él.' };
+    const sc = st.squadChg && st.squadChg[p.team];
+    if (sc && sc.out >= LG.MAX_CHANGES && LG.team(st, p.team).div <= 2) return { ok: false, msg: 'El ' + LG.team(st, p.team).short + ' ya ha cerrado su plantilla: no venderá más jugadores esta temporada.' };
     if (p.retiring) return { ok: false, msg: p.name + ' ha anunciado su retirada al final de la temporada y no puede ser traspasado.' };
     if (me.parent) return { ok: false, msg: 'Los filiales no fichan: solo pueden subir jugadores de su cantera.' };
     if (amount > me.budget) return { ok: false, msg: 'No tienes presupuesto suficiente (' + U.money(me.budget) + ').' };
@@ -628,7 +716,12 @@
   };
 
   LG.transfer = function (st, p, toId, fee) {
-    const w = st.world; const from = w.teams[p.team], to = w.teams[toId];
+    // las consecuencias para un mánager (finanzas, alineación, logros) se apuntan en sus datos
+    if (LG.isMulti(st) && p.team !== st.userTeam && toId !== st.userTeam) { const own = [p.team, toId].find((x) => LG.isManaged(st, x)); if (own) return LG.own(st, own, () => LG.transfer(st, p, toId, fee)); }
+    const w = st.world;
+    st.squadChg = st.squadChg || {};
+    const chg = (id, k) => { if (LG.isManaged(st, id)) return; const c = st.squadChg[id] = st.squadChg[id] || { in: 0, out: 0 }; c[k]++; };
+    chg(toId, 'in'); chg(p.team, 'out'); const from = w.teams[p.team], to = w.teams[toId];
     from.budget = Math.round((from.budget + fee) * 100) / 100; to.budget = Math.round((to.budget - fee) * 100) / 100;
     const oldTeam = p.team;
     p.team = toId; p.yel = 0; p.mor = 75; DB.touch(w);
@@ -646,16 +739,20 @@
 
   LG.aiTransfers = function (st, R, n) {
     const w = st.world;
-    const buyers = st.div[1].concat(st.div[2]).filter((id) => id !== st.userTeam && !w.teams[id].parent);   // los filiales no fichan
+    // los filiales no fichan; ningún equipo de la IA cambia más de 3 jugadores de una temporada a otra
+    st.squadChg = st.squadChg || {};
+    const room = (id, k) => ((st.squadChg[id] || { in: 0, out: 0 })[k] < LG.MAX_CHANGES);
+    const buyers = st.div[1].concat(st.div[2]).filter((id) => !LG.isManaged(st, id) && !w.teams[id].parent && room(id, 'in'));
     for (let k = 0; k < n; k++) {
-      const b = w.teams[R.pick(buyers)];
+      const okB = buyers.filter((id) => room(id, 'in')); if (!okB.length) return;
+      const b = w.teams[R.pick(okB)];
       const mine = DB.teamPlayers(w, b.id);
       if (mine.length >= 27 || b.budget < 1) continue;
       const lines = ['DEF', 'MED', 'DEL'];
       const line = R.pick(lines);
       const weakest = mine.filter((p) => p.line === line).sort((a, c) => a.ovr - c.ovr)[0];
       const thr = weakest ? weakest.ovr + 2 : 60;
-      const cands = Object.values(w.players).filter((p) => p.line === line && !p.retiring && p.team !== b.id && p.team !== st.userTeam && w.teams[p.team].div <= 3 && p.ovr >= thr && p.ovr <= thr + 8 && p.age <= 31)
+      const cands = Object.values(w.players).filter((p) => p.line === line && !p.retiring && p.team !== b.id && !LG.isManaged(st, p.team) && room(p.team, 'out') && w.teams[p.team].div <= 3 && p.ovr >= thr && p.ovr <= thr + 8 && p.age <= 31)
         .filter((p) => { const pr = LG.askingPrice(st, p); return pr <= b.budget * 0.7 && DB.teamPlayers(w, p.team).length > 19; });
       if (!cands.length) continue;
       const p = R.pick(cands);
@@ -668,7 +765,7 @@
     const nOff = R.int(0, 2);
     for (let i = 0; i < nOff; i++) {
       const p = R.pick(mine.slice(0, 16)); if (!p || p.retiring) continue;
-      let buyers = st.div[1].concat(st.div[2]).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.9 && (w.teams[id].base || 70) >= p.ovr - 10);
+      let buyers = st.div[1].concat(st.div[2]).filter((id) => !LG.isManaged(st, id) && (!st.squadChg || !st.squadChg[id] || st.squadChg[id].in < LG.MAX_CHANGES) && !w.teams[id].parent && w.teams[id].budget > p.value * 0.9 && (w.teams[id].base || 70) >= p.ovr - 10);
       // clubes extranjeros también pujan por los buenos jugadores
       const fx = (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12);
       if (p.ovr >= 68 && fx.length && (R() < 0.45 || !buyers.length)) buyers = fx;
@@ -695,7 +792,7 @@
     const w = st.world; const p = w.players[pid]; const R = LG.rng(st);
     if (p.retiring) return { ok: false, msg: p.name + ' se retira al final de la temporada: nadie puede ficharlo.' };
     if (!LG.isWindow(st)) return { ok: false, msg: 'El mercado está cerrado desde la jornada 30: espera a la próxima temporada para vender.' };
-    const buyers = st.div[1].concat(st.div[2], st.div[3], p.ovr >= 68 ? (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12) : []).filter((id) => id !== st.userTeam && !w.teams[id].parent && w.teams[id].budget > p.value * 0.6 && DB.teamStrength(w, id) >= p.ovr - 12 && DB.teamPlayers(w, id).length < 28);
+    const buyers = st.div[1].concat(st.div[2], st.div[3], p.ovr >= 68 ? (st.div[5] || []).filter((id) => w.teams[id] && w.teams[id].base >= p.ovr - 6 && w.teams[id].base <= p.ovr + 12) : []).filter((id) => !LG.isManaged(st, id) && (!st.squadChg || !st.squadChg[id] || st.squadChg[id].in < LG.MAX_CHANGES) && !w.teams[id].parent && w.teams[id].budget > p.value * 0.6 && DB.teamStrength(w, id) >= p.ovr - 12 && DB.teamPlayers(w, id).length < 28);
     if (!buyers.length) return { ok: false, msg: 'Ningún club está interesado en ' + p.name + ' ahora mismo.' };
     R.shuffle(buyers);
     const n = Math.min(buyers.length, R.int(1, 3));
@@ -786,8 +883,7 @@
       ties[0].h = x; ties[0].a = y; ties[0].neutral = true;
     }
     C.rounds.push(rd);
-    const ut = ties.find((t) => t.h === st.userTeam || t.a === st.userTeam);
-    if (ut && st.day > 0) LG.news(st, 'Sorteo de Copa del Rey (' + rd.label + '): ' + w.teams[ut.h].short + ' - ' + w.teams[ut.a].short + (ties[0].neutral ? ' en el ' + C.venue.stadium + ' (campo neutral)' : '') + '.', 'cup');
+    ties.filter((t) => LG.involvesMgr(st, t)).forEach((ut) => { if (st.day > 0) LG.news(st, 'Sorteo de Copa del Rey (' + rd.label + '): ' + w.teams[ut.h].short + ' - ' + w.teams[ut.a].short + (ties[0].neutral ? ' en el ' + C.venue.stadium + ' (campo neutral)' : '') + '.', 'cup'); });
   };
   LG.cupDue = (st) => !!(st.cup && !st.seasonOver && !st.cup.winner && st.cup.rounds[st.cup.round] && st.day >= LG.CUP_DAYS[st.cup.round]);
   LG.cupFixtures = function (st) {
@@ -847,7 +943,7 @@
     res.events.forEach((e) => {
       const p = w.players[e.pid]; if (!p) return;
       if (e.type === 'goal' && !e.own) C.goals[e.pid] = (C.goals[e.pid] || 0) + 1;
-      if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (p.team === st.userTeam) LG.news(st, 'Lesión en Copa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
+      if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión en Copa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
     });
     [f.h, f.a].forEach((tid, s) => { const t = w.teams[tid]; t.mor = U.clamp((t.mor || 70) + (res.winSide === s ? 3 : -3), 30, 99); });
   };
@@ -855,13 +951,12 @@
     const R = LG.rng(st); const w = st.world; const C = st.cup; const r = C.round;
     const fx = LG.cupFixtures(st); const played = new Set(); const summary = [];
     fx.forEach((f) => {
-      const isUser = f.h === st.userTeam || f.a === st.userTeam;
       const L = [LG.lineupFor(st, f.h), LG.lineupFor(st, f.a)];
-      let res = isUser && userRes ? userRes : SIM.play(w, LG.simOpts(st, f, L, R));
+      let res = LG.takeRes(st, f, userRes) || SIM.play(w, LG.simOpts(st, f, L, R));
       res = LG.cupResolve(st, f, res, L, R);
       LG.applyCupResult(st, f, res, L);
       played.add(f.h); played.add(f.a); summary.push({ f, res });
-      if (isUser) {
+      LG.userSides(st, f).forEach((tid) => LG.own(st, tid, () => {
         const side = f.h === st.userTeam ? 0 : 1; const won = res.winSide === side; const opp = w.teams[side === 0 ? f.a : f.h];
         st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings };
         LG.userMatchDone(st, f, res);
@@ -877,7 +972,7 @@
           me.budget = Math.round((me.budget + m) * 100) / 100;
           st.finance.log.unshift({ s: st.season, d: st.day, inc: m, exp: 0, items: [['Taquilla de Copa (' + Math.round(ti.att * 0.85).toLocaleString('es-ES') + ' espectadores)', m]], bal: me.budget });
         }
-      }
+      }));
     });
     LG.recover(st, played, false);
     const winners = C.rounds[r].ties.map((t) => t.w);
@@ -885,9 +980,9 @@
     if (r === LG.CUP_ROUNDS.length - 1) {
       const fin = C.rounds[r].ties[0]; C.winner = fin.w; C.runnerUp = fin.w === fin.h ? fin.a : fin.h;
       const wt = w.teams[C.winner]; wt.gtitles = wt.gtitles || {}; wt.gtitles.copa = (wt.gtitles.copa || 0) + 1;
-      if (C.winner !== st.userTeam) { wt.budget = Math.round((wt.budget + LG.TITLE_PRIZE.copa) * 100) / 100; LG.news(st, 'El ' + wt.name + ' gana la Copa del Rey ante el ' + w.teams[C.runnerUp].short + ' en el ' + C.venue.stadium + '.', 'cup'); }
-      if (C.winner === st.userTeam || C.runnerUp === st.userTeam) ACH('final_copa', st);
-      if (C.winner === st.userTeam) { ACH('copa', st); st.trophies.push({ season: st.season, comp: 'copa', team: st.userTeam }); LG.prize(st, st.userTeam, LG.TITLE_PRIZE.copa, 'Copa del Rey: premio al campeón'); }
+      if (!LG.isManaged(st, C.winner)) { wt.budget = Math.round((wt.budget + LG.TITLE_PRIZE.copa) * 100) / 100; LG.news(st, 'El ' + wt.name + ' gana la Copa del Rey ante el ' + w.teams[C.runnerUp].short + ' en el ' + C.venue.stadium + '.', 'cup'); }
+      [C.winner, C.runnerUp].filter((x) => LG.isManaged(st, x)).forEach((x) => LG.own(st, x, () => ACH('final_copa', st)));
+      if (LG.isManaged(st, C.winner)) LG.own(st, C.winner, () => { ACH('copa', st); LG.addTrophy(st, C.winner, 'copa'); LG.prize(st, C.winner, LG.TITLE_PRIZE.copa, 'Copa del Rey: premio al campeón'); });
     } else {
       C.alive = winners.concat(r === 0 ? C.byes : []);
       LG.drawCupRound(st, C, R);
@@ -924,16 +1019,15 @@
   LG.playSupes = function (st, userRes) {
     const R = LG.rng(st); const S = st.supes; const w = st.world; const summary = []; const played = new Set();
     LG.supesFixtures(st).forEach((f) => {
-      const isUser = f.h === st.userTeam || f.a === st.userTeam;
       const L = [LG.lineupFor(st, f.h), LG.lineupFor(st, f.a)];
-      let res = isUser && userRes ? userRes : SIM.play(w, LG.simOpts(st, f, L, R));
+      let res = LG.takeRes(st, f, userRes) || SIM.play(w, LG.simOpts(st, f, L, R));
       res = LG.cupResolve(st, f, res, L, R);
       if (MF.EU) MF.EU.applySpanish(st, f, res, L);
       const t = f.tie; t.hg = res.score[0]; t.ag = res.score[1]; t.pens = res.pens || null; t.et = !!res.et; t.w = res.winSide === 0 ? f.h : f.a;
       const loser = t.w === f.h ? f.a : f.h;
       LG.prize(st, loser, S.round === 0 ? LG.TITLE_PRIZE.supes_semi : LG.TITLE_PRIZE.supes_final, 'Supercopa de España: ' + (S.round === 0 ? 'semifinalista' : 'finalista'));
       played.add(f.h); played.add(f.a); summary.push({ f, res });
-      if (isUser) { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); }
+      LG.userSides(st, f).forEach((tid) => LG.own(st, tid, () => { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); }));
     });
     LG.recover(st, played, false);
     if (S.round === 0) { S.final = { a: S.semis[0].w, b: S.semis[1].w }; S.round = 1; LG.news(st, 'Final de la Supercopa de España: ' + w.teams[S.final.a].short + ' - ' + w.teams[S.final.b].short + '.', 'cup'); }
@@ -941,7 +1035,7 @@
       S.done = true; S.winner = S.final.w; const wt = w.teams[S.winner];
       wt.gtitles = wt.gtitles || {}; wt.gtitles.supes = (wt.gtitles.supes || 0) + 1;
       LG.prize(st, S.winner, LG.TITLE_PRIZE.supes, 'Supercopa de España: premio al campeón');
-      if (S.winner === st.userTeam) { st.trophies.push({ season: st.season, comp: 'supes', team: st.userTeam }); ACH('supercopa_es', st); }
+      if (LG.isManaged(st, S.winner)) LG.own(st, S.winner, () => { LG.addTrophy(st, S.winner, 'supes'); ACH('supercopa_es', st); });
       LG.news(st, 'El ' + wt.name + ' gana la Supercopa de España.', 'cup');
     }
     return summary;
@@ -989,18 +1083,10 @@
     const pool = st.div[3].slice().sort((a, b) => DB.teamStrength(st.world, b) - DB.teamStrength(st.world, a));
     const upPool = pool.slice(0, down2.length);
     // premios
-    const uT = LG.team(st, st.userTeam);
-    const uPos = uT.div <= 2 ? LG.table(st, uT.div).find((r) => r.id === uT.id).pos : null;
     const prize = (div, pos) => (div === 1 ? Math.max(2, 22 - pos) : Math.max(0.5, (23 - pos) * 0.25));
     [1, 2].forEach((dv) => LG.table(st, dv).forEach((r) => LG.prize(st, r.id, prize(dv, r.pos), 'Premio de la Liga por terminar ' + r.pos + 'º')));
-    if (up.indexOf(st.userTeam) >= 0) LG.prize(st, st.userTeam, 10, 'Premio por el ascenso a Primera');
     LG.prize(st, champ1, LG.TITLE_PRIZE.liga, 'Liga: premio al campeón'); LG.prize(st, champ2, LG.TITLE_PRIZE.segunda, 'Segunda: premio al campeón');
     if (P.winner) LG.prize(st, P.winner, LG.TITLE_PRIZE.playoff, 'Playoff de ascenso: premio al ganador');
-    // objetivo
-    const obj = st.board.objective; let met = uPos !== null && uPos <= obj.maxPos;
-    if (uT.div === 2 && up.indexOf(st.userTeam) >= 0) met = true;
-    const near = uPos !== null && uPos <= obj.maxPos + 2;
-    st.board.conf = U.clamp(st.board.conf + (met ? 22 : near ? -10 : -28), 0, 100);
     // estadísticas de la temporada
     const all = Object.values(st.world.players);
     const top = (f, n) => all.filter((p) => st.world.teams[p.team] && st.world.teams[p.team].div <= 2).sort((a, b) => f(b) - f(a)).slice(0, n || 1);
@@ -1009,6 +1095,17 @@
     // títulos conseguidos en la partida y logros
     const addT = (tid, k) => { const t = LG.team(st, tid); t.gtitles = t.gtitles || {}; t.gtitles[k] = (t.gtitles[k] || 0) + 1; };
     addT(champ1, 'liga'); addT(champ2, 'segunda');
+    // ---- parte de cada mánager: objetivo, títulos y logros
+    const per = [];
+    LG.forEachMgr(st, (j) => {
+    const uT = LG.team(st, st.userTeam);
+    const uPos = uT.div <= 2 ? LG.table(st, uT.div).find((r) => r.id === uT.id).pos : null;
+    if (up.indexOf(st.userTeam) >= 0) LG.prize(st, st.userTeam, 10, 'Premio por el ascenso a Primera');
+    const obj = st.board.objective; let met = uPos !== null && uPos <= obj.maxPos;
+    if (uT.div === 2 && up.indexOf(st.userTeam) >= 0) met = true;
+    const near = uPos !== null && uPos <= obj.maxPos + 2;
+    st.board.conf = U.clamp(st.board.conf + (met ? 22 : near ? -10 : -28), 0, 100);
+    per[j] = { uT, uPos, met, near, obj };
     st.trophies = st.trophies || [];
     if (champ1 === st.userTeam) { st.trophies.push({ season: st.season, comp: 'liga', team: st.userTeam }); ACH('campeon_liga', st); }
     if (champ2 === st.userTeam) { st.trophies.push({ season: st.season, comp: 'segunda', team: st.userTeam }); ACH('campeon_segunda', st); }
@@ -1023,16 +1120,20 @@
     st.ach.seasons++;
     if (st.ach.seasons >= 3) ACH('veterano', st);
     if (st.ach.seasons >= 10) ACH('leyenda', st);
+    });
     if (MF.EU) MF.EU.endSeason(st);
+    const users = [];
+    LG.forEachMgr(st, (j) => { const q = per[j]; users[j] = { user: { team: st.userTeam, div: q.uT.div, pos: q.uPos, met: q.met, objective: q.obj.text, name: st.userName }, report: LG.seasonReport(st, q.uT, q.uPos, q.met, q.near, up, relegated1, down2) }; });
     const eh = st.euro && st.euro.history && st.euro.history[0] && st.euro.history[0].season === st.season ? st.euro.history[0] : null;
+    const u0 = users[st.cur || 0];
     st.history.unshift({
       supes: st.supes && st.supes.winner ? st.supes.winner : null,
       eu: eh ? { ucl: eh.ucl, uel: eh.uel, uecl: eh.uecl, sup: eh.sup, inter: eh.inter, cwc: eh.cwc } : null,
-      report: LG.seasonReport(st, uT, uPos, met, near, up, relegated1, down2),
+      report: u0.report, users: LG.isMulti(st) ? users : undefined,
       table1: t1.map((r) => r.id),
       cup: st.cup && st.cup.winner ? [st.cup.winner, st.cup.runnerUp] : null,
       season: st.season, champ1, champ2, relegated: relegated1.slice(), promoted: up.slice(), playoff: P.winner || null, down2: down2.slice(), up3: upPool.slice(),
-      user: { team: st.userTeam, div: uT.div, pos: uPos, met, objective: obj.text },
+      user: u0.user,
       pich1: pich1 ? [pich1.name, pich1.team, pich1.st.g] : null, pich2: pich2 ? [pich2.name, pich2.team, pich2.st.g] : null,
       mvp: top((p) => (p.st.ps >= 15 ? p.st.rat / p.st.ps : 0))[0] ? (function () { const p = top((q) => (q.st.ps >= 15 ? q.st.rat / q.st.ps : 0))[0]; return [p.name, p.team]; })() : null,
     });
@@ -1045,8 +1146,11 @@
     };
     st.seasonOver = true;
     LG.news(st, 'Fin de la temporada ' + DB.SEASON_LABEL(st.season) + '. Campeón de Liga: ' + LG.team(st, champ1).name + '.', 'league');
-    if (st.board.conf < 20) { st.fired = true; ACH('despedido', st); }
-    if (st.pendingDivs[3].indexOf(st.userTeam) >= 0) { st.fired = true; st.outOfLeague = true; LG.news(st, 'El ' + uT.name + ' desciende a Primera RFEF, categoría que no se juega en esta versión. Elige un nuevo club.', 'board'); }
+    LG.forEachMgr(st, () => {
+      const uT = LG.team(st, st.userTeam);
+      if (st.board.conf < 20 && !st.fired) { st.fired = true; ACH('despedido', st); }
+      if (st.pendingDivs[3].indexOf(st.userTeam) >= 0) { st.fired = true; st.outOfLeague = true; LG.news(st, 'El ' + uT.name + ' desciende a Primera RFEF, categoría que no se juega en esta versión. Elige un nuevo club.', 'board'); }
+    });
   };
 
   // ---------- balance de la temporada del usuario (para el resumen y la imagen para redes)
@@ -1116,7 +1220,7 @@
       let d = p.age <= 21 ? R.int(1, 4) : p.age <= 24 ? R.int(0, 3) : p.age <= 29 ? R.int(-1, 1) : p.age <= 32 ? R.int(-2, 0) : R.int(-4, -1);
       if (avg >= 7.1 && p.st.ps >= 10) d += 1;
       if (p.st.pj < 5 && p.age < 24) d -= 1;
-      if (p.team === st.userTeam && p.age <= 23 && R() < 0.1 * LG.stf(st, 'cantera')) d += 1;   // el entrenador de cantera ayuda a los jóvenes
+      if (LG.isManaged(st, p.team) && p.age <= 23 && R() < 0.1 * LG.stf(st, 'cantera', p.team)) d += 1;   // el entrenador de cantera ayuda a los jóvenes
       let nv = p.ovr + d; if (d > 0) nv = Math.min(nv, Math.max(p.pot, p.ovr));
       d = nv - p.ovr; p.ovr = U.clamp(nv, 40, 95); LG.bumpAttrs(p, d);
       if (p.age >= 30) { p.at.vel = U.clamp(p.at.vel - R.int(0, 2), 10, 99); p.at.res = U.clamp(p.at.res - R.int(0, 2), 10, 99); }
@@ -1127,7 +1231,7 @@
     Object.values(w.players).forEach((p) => {
       if (p.fx) return;
       if (p.retiring || p.age >= 40) {
-        if (p.team === st.userTeam) LG.news(st, p.name + ' se retira del fútbol profesional. ¡Gracias por todo!', 'info');
+        if (LG.isManaged(st, p.team)) LG.news(st, p.name + ' se retira del fútbol profesional. ¡Gracias por todo!', 'info');
         delete w.players[p.id];
       }
     });
@@ -1141,10 +1245,11 @@
       for (let i = 0; i < need || (i === 0 && gks < 2); i++) {
         const role = gks + i < 2 && i < 2 ? 'POR' : roles[(i + 1) % roles.length];
         LG.genPlayer(st, t.id, role, U.clamp(t.base - 10 + R.int(-3, 4), 50, 80), R.int(18, 20), R);
-        if (t.id === st.userTeam) LG.news(st, 'Un nuevo canterano se incorpora a la plantilla.', 'youth');
+        if (LG.isManaged(st, t.id)) LG.news(st, 'Un nuevo canterano se incorpora a la plantilla del ' + t.short + '.', 'youth');
+        else { st.squadChg = st.squadChg || {}; const c = st.squadChg[t.id] = st.squadChg[t.id] || { in: 0, out: 0 }; c.in++; }
       }
       // presupuesto de los equipos de la IA
-      if (t.id !== st.userTeam) {
+      if (!LG.isManaged(st, t.id)) {
         const base = (G.MF_TEAMS.find((x) => x.id === t.id) || {}).budget || 5;
         t.budget = Math.round(base * (t.div === 1 ? 1 : 0.5) * (0.8 + R() * 0.5) * 10) / 10;
       }
@@ -1152,17 +1257,21 @@
       t.formation = DB.bestFormation(w, t.id);
       t.mor = 70;
     });
-    st.season++; st.day = 0; st.seasonOver = false; st.playoff = null; st.youthUsed = false; st.offers = []; st.offerLog = {};
+    st.season++; st.day = 0; st.seasonOver = false; st.playoff = null; st.pendingRes = null; st.turnDone = null;
     st.comp[1] = LG.makeComp(1, st.div[1], R); st.comp[2] = LG.makeComp(2, st.div[2], R);
-    st.lineup = DB.autoLineup(w, st.userTeam, st.lineup ? st.lineup.formation : w.teams[st.userTeam].formation);
-    LG.setObjective(st);
+    LG.forEachMgr(st, () => {
+      st.youthUsed = false; st.offers = []; st.offerLog = {};
+      st.lineup = DB.autoLineup(w, st.userTeam, st.lineup ? st.lineup.formation : w.teams[st.userTeam].formation);
+      LG.setObjective(st);
+    });
     st.cup = LG.setupCup(st, R);
     if (MF.EU) MF.EU.setup(st, false);
     st.supes = LG.setupSupes(st, false);
-    if (!st.staff) LG.initStaff(st, R);
-    LG.staffMarket(st, R);
+    LG.forEachMgr(st, () => { if (!st.staff) LG.initStaff(st, R); LG.staffMarket(st, R); });
+    // fichajes del verano: cierran el periodo de «3 cambios como mucho» de los equipos de la IA
     LG.aiTransfers(st, R, 14);
-    LG.news(st, 'Arranca la temporada ' + DB.SEASON_LABEL(st.season) + '. Objetivo de la directiva: ' + st.board.objective.text + '.', 'board');
+    st.squadChg = {};
+    LG.forEachMgr(st, () => LG.news(st, 'Arranca la temporada ' + DB.SEASON_LABEL(st.season) + '. Objetivo de la directiva del ' + LG.team(st, st.userTeam).short + ': ' + st.board.objective.text + '.', 'board'));
     LG.flushBackground(st);
   };
 
@@ -1171,8 +1280,8 @@
     const R = U.rng(U.hash(st.season + 'jobs' + st.userTeam));
     const t = LG.team(st, st.userTeam);
     const D = st.seasonOver && st.pendingDivs ? st.pendingDivs : st.div;
-    let pool = D[1].concat(D[2]).filter((id) => id !== st.userTeam && DB.teamStrength(st.world, id) < DB.teamStrength(st.world, st.userTeam) + 1);
-    if (pool.length < 3) pool = D[2].filter((id) => id !== st.userTeam);
+    let pool = D[1].concat(D[2]).filter((id) => !LG.isManaged(st, id) && DB.teamStrength(st.world, id) < DB.teamStrength(st.world, st.userTeam) + 1);
+    if (pool.length < 3) pool = D[2].filter((id) => !LG.isManaged(st, id));
     R.shuffle(pool);
     return pool.slice(0, 3);
   };
@@ -1201,6 +1310,7 @@
   // Las plantillas extranjeras de referencia (p.fx) no se guardan: se regeneran al cargar
   LG.save = function (st, slot) {
     st.saved = Date.now();
+    if (LG.isMulti(st)) LG.MGR_FIELDS.forEach((k) => { st.mgrs[st.cur][k] = st[k]; });
     const players = {}; Object.values(st.world.players).forEach((p) => { if (!p.fx) players[p.id] = p; });
     const fxTeams = {}; Object.values(st.world.teams).forEach((t) => { if (t.foreign) fxTeams[t.id] = 1; });
     const teams = {}; Object.values(st.world.teams).forEach((t) => { if (!t.foreign) teams[t.id] = t; });
@@ -1241,7 +1351,8 @@
   LG.slotInfo = function (slot) {
     const s = LG.load(slot); if (!s) return null;
     const t = s.world.teams[s.userTeam];
-    return { team: t.name, id: t.id, season: DB.SEASON_LABEL(s.season), day: s.day, div: t.div, saved: s.saved };
+    const multi = LG.isMulti(s) ? s.mgrs.map((m, i) => (i === s.cur ? s.userName : m.userName) + ' (' + s.world.teams[i === s.cur ? s.userTeam : m.userTeam].short + ')').join(' vs ') : null;
+    return { team: t.name, id: t.id, season: DB.SEASON_LABEL(s.season), day: s.day, div: t.div, saved: s.saved, multi };
   };
 
   MF.LG = LG;

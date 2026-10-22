@@ -416,3 +416,13 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 .champ .ico { font-size: 22px; }
 .champ small { display: block; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: .04em; }
 .champ b { display: block; font-size: 15px; line-height: 1.15; }
+
+/* ---------- partida de dos jugadores (por turnos) */
+.turn-bar { margin: 0 auto 6px; width: fit-content; max-width: 100%; padding: 6px 14px; background: #1d2126; color: #fff; border: 3px solid #1d2126; border-left-width: 12px; border-right-width: 12px; font-weight: 700; font-size: 15px; }
+.turn-bar b { color: #ffd966; }
+.turn-card { display: flex; flex-direction: column; align-items: center; gap: 4px; border-width: 5px !important; }
+.turn-card img { margin: 6px 0; }
+.duel-note { margin: 6px 0; padding: 8px 10px; background: #fff3b0; border: 3px solid #1d2126; font-size: 14px; }
+.fr-players .btn { min-width: 0; }
+.fr-2p { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.fr-2p label.f { flex: 1 1 200px; }

@@ -48,7 +48,7 @@
     // premio de participación y aviso
     EU.CODES.forEach((c) => E.comps[c].teams.forEach((id) => {
       EU.pay(st, id, EU.CFG[c].prize.part, E.comps[c].name + ': premio de participación');
-      if (id === st.userTeam) LG.news(st, '¡El ' + T(st, id).short + ' jugará la ' + E.comps[c].name + ' esta temporada!', 'cup');
+      if (LG.isManaged(st, id)) LG.news(st, '¡El ' + T(st, id).short + ' jugará la ' + E.comps[c].name + ' esta temporada!', 'cup');
     }));
   };
   EU.neutralVenue = function (st, avoid, R, world) {
@@ -151,13 +151,14 @@
     });
     res.events.forEach((e) => {
       const p = w.players[e.pid]; if (!p || !isSp(st, p.team)) return;
-      if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (p.team === st.userTeam) LG.news(st, 'Lesión en Europa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
-      if (e.type === 'red' && p.team === st.userTeam) LG.news(st, p.name + ' es expulsado en Europa.', 'sus');
+      if (e.type === 'injury') { p.inj = Math.max(p.inj, e.weeks); p.fit = Math.min(p.fit, 60); if (LG.isManaged(st, p.team)) LG.news(st, 'Lesión en Europa: ' + p.name + ' estará ' + e.weeks + ' jornada(s) de baja.', 'injury'); }
+      if (e.type === 'red' && LG.isManaged(st, p.team)) LG.news(st, p.name + ' es expulsado en Europa.', 'sus');
     });
   };
   EU.coef = function (st, tid, pts) { const E = st.euro; const k = String(st.season); E.coef[tid] = E.coef[tid] || {}; E.coef[tid][k] = (E.coef[tid][k] || 0) + pts; };
   EU.pay = function (st, tid, amount, text) {
     if (!amount) return; const t = T(st, tid); if (!t || t.foreign) return;
+    if (LG.isMulti(st) && LG.isManaged(st, tid) && tid !== st.userTeam) return LG.own(st, tid, () => EU.pay(st, tid, amount, text));
     t.budget = Math.round((t.budget + amount) * 100) / 100;
     if (tid === st.userTeam) {
       st.finance.log.unshift({ s: st.season, d: st.day, inc: amount, exp: 0, items: [[text, amount]], bal: t.budget });
@@ -189,9 +190,8 @@
   EU.play = function (st, ev, userRes) {
     const R = LG.rng(st); const fx = EU.fixtures(st, ev); const summary = []; const played = new Set();
     fx.forEach((f) => {
-      const isUser = f.h === st.userTeam || f.a === st.userTeam;
       const L = [LG.lineupFor(st, f.h), LG.lineupFor(st, f.a)];
-      let res = isUser && userRes ? userRes : SIM.play(st.world, LG.simOpts(st, f, L, R));
+      let res = LG.takeRes(st, f, userRes) || SIM.play(st.world, LG.simOpts(st, f, L, R));
       res.score = res.score.slice(); res.events = res.events.slice();
       if (f.ko) {
         let agg = null;
@@ -201,7 +201,7 @@
       EU.applySpanish(st, f, res, L);
       played.add(f.h); played.add(f.a);
       summary.push({ f, res });
-      if (isUser) { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); ACH('debut_europa', st); }
+      LG.userSides(st, f).forEach((tid) => LG.own(st, tid, () => { st.lastUser = { f, score: res.score.slice(), events: res.events.filter((e) => e.type === 'goal' || e.type === 'red'), stats: res.stats, ratings: res.ratings }; LG.userMatchDone(st, f, res); ACH('debut_europa', st); }));
       EU.record(st, ev, f, res);
     });
     LG.recover(st, played, false);
@@ -247,11 +247,11 @@
   EU.title = function (st, tid, k, text) {
     const t = T(st, tid); if (!t) return;
     t.gtitles = t.gtitles || {}; t.gtitles[k] = (t.gtitles[k] || 0) + 1;
-    if (tid === st.userTeam) {
+    if (LG.isManaged(st, tid)) LG.own(st, tid, () => {
       st.trophies.push({ season: st.season, comp: k, team: tid });
       ACH({ ucl: 'ucl', uel: 'uel', uecl: 'uecl', supercopa: 'supercopa_eu', inter: 'intercontinental', mundial: 'mundial' }[k], st);
       LG.news(st, '¡CAMPEONES! El ' + t.name + ' gana ' + text + '.', 'cup');
-    } else if (!t.foreign || k === 'ucl' || k === 'mundial') LG.news(st, 'El ' + t.name + ' gana ' + text + '.', 'cup');
+    }); else if (!t.foreign || k === 'ucl' || k === 'mundial') LG.news(st, 'El ' + t.name + ' gana ' + text + '.', 'cup');
   };
 
   // avanza la competición tras jugar una fecha
@@ -271,8 +271,7 @@
         const ties = []; for (let i = 0; i < 8; i++) ties.push({ a: po[i], b: po[15 - i], legs: [], w: null });
         C.ko.push({ stage: 'po', label: EU.KO[0][1], days: EU.KO[0][2], ties, leg: 0 });
         C.phase = 'ko'; C.koIdx = 0;
-        const u = tab.find((r) => r.id === st.userTeam);
-        if (u) LG.news(st, C.name + ': el ' + T(st, st.userTeam).short + ' termina ' + u.pos + 'º en la fase de liga' + (u.pos <= 8 ? ' y pasa directamente a octavos.' : u.pos <= 24 ? ' y jugará la eliminatoria previa.' : ' y queda eliminado.'), 'cup');
+        tab.filter((r) => LG.isManaged(st, r.id)).forEach((u) => LG.news(st, C.name + ': el ' + T(st, u.id).short + ' termina ' + u.pos + 'º en la fase de liga' + (u.pos <= 8 ? ' y pasa directamente a octavos.' : u.pos <= 24 ? ' y jugará la eliminatoria previa.' : ' y queda eliminado.'), 'cup'));
         tab.forEach((r) => {
           if (r.pos <= 24) EU.pay(st, r.id, P.ko[0], C.name + ': premio por superar la fase de liga');
           if (r.pos <= 8) EU.pay(st, r.id, P.ko[1], C.name + ': premio por superar la previa (acceso directo a octavos)');
@@ -285,13 +284,13 @@
     // eliminatoria resuelta
     const winners = K.ties.map((t) => t.w);
     const si = EU.KO.findIndex((x) => x[0] === K.stage);
-    K.ties.forEach((t) => { const lost = t.w === t.a ? t.b : t.a; if (lost === st.userTeam) LG.news(st, C.name + ': el ' + T(st, st.userTeam).short + ' cae en ' + K.label.toLowerCase() + ' ante el ' + T(st, t.w).short + '.', 'cup'); });
+    K.ties.forEach((t) => { const lost = t.w === t.a ? t.b : t.a; if (LG.isManaged(st, lost)) LG.news(st, C.name + ': el ' + T(st, lost).short + ' cae en ' + K.label.toLowerCase() + ' ante el ' + T(st, t.w).short + '.', 'cup'); });
     winners.forEach((id) => { EU.coef(st, id, 1); if (K.stage !== 'f') EU.pay(st, id, P.ko[Math.min(si + 1, P.ko.length - 1)], C.name + ': premio por superar ' + K.label.toLowerCase()); });
     if (K.stage === 'f') {
       const t = K.ties[0]; C.winner = t.w; C.runnerUp = t.w === t.a ? t.b : t.a; C.phase = 'done';
       EU.pay(st, C.winner, P.champ, C.name + ': campeón');
       EU.title(st, C.winner, ev.code, 'la ' + C.name);
-      if (C.winner === st.userTeam || C.runnerUp === st.userTeam) ACH('final_europa', st);
+      [C.winner, C.runnerUp].filter((x) => LG.isManaged(st, x)).forEach((x) => LG.own(st, x, () => ACH('final_europa', st)));
       return;
     }
     const next = EU.KO[si + 1];
@@ -307,8 +306,7 @@
     }
     C.ko.push({ stage: next[0], label: next[1], days: next[2], ties, leg: 0 });
     C.koIdx++;
-    const ut = ties.find((t) => t.a === st.userTeam || t.b === st.userTeam);
-    if (ut) LG.news(st, C.name + ' (' + next[1].toLowerCase() + '): ' + T(st, ut.a).short + ' - ' + T(st, ut.b).short + '.', 'cup');
+    ties.filter((t) => LG.isManaged(st, t.a) || LG.isManaged(st, t.b)).forEach((ut) => LG.news(st, C.name + ' (' + next[1].toLowerCase() + '): ' + T(st, ut.a).short + ' - ' + T(st, ut.b).short + '.', 'cup'));
   };
 
   // ---------- Copa Intercontinental: camino de la Copa Challenger (simulado) para conocer al rival
@@ -395,7 +393,7 @@
       // 1A-2B, 1C-2D, 1E-2F, 1G-2H, 1B-2A, 1D-2C, 1F-2E, 1H-2G
       const P = [[0, 1], [2, 3], [4, 5], [6, 7], [1, 0], [3, 2], [5, 4], [7, 6]];
       W.ko.push({ label: EU.CWC_KO[0], ties: P.map(([x, y]) => ({ a: g[x][0].id, b: g[y][1].id })) });
-      if (!g.some((rows) => rows.slice(0, 2).some((r) => r.id === st.userTeam)) && W.teams.indexOf(st.userTeam) >= 0) LG.news(st, 'Mundial de Clubes: el ' + T(st, st.userTeam).short + ' cae en la fase de grupos.', 'cup');
+      W.teams.filter((id) => LG.isManaged(st, id) && !g.some((rows) => rows.slice(0, 2).some((r) => r.id === id))).forEach((id) => LG.news(st, 'Mundial de Clubes: el ' + T(st, id).short + ' cae en la fase de grupos.', 'cup'));
       return;
     }
     const K = W.ko[W.stage - 4]; const ws = K.ties.map((t) => t.w);
@@ -434,8 +432,8 @@
     if (E.history.length > 30) E.history.length = 30;
     // borra coeficientes antiguos (5 temporadas)
     Object.keys(E.coef).forEach((id) => Object.keys(E.coef[id]).forEach((k) => { if (+k < st.season - 4) delete E.coef[id][k]; }));
-    const u = st.userTeam;
-    if (c.ucl && c.ucl.winner === u && st.trophies.some((x) => x.season === st.season && x.comp === 'liga') && st.trophies.some((x) => x.season === st.season && x.comp === 'copa')) ACH('triplete', st);
+    LG.forEachMgr(st, () => { const u = st.userTeam;
+    if (c.ucl && c.ucl.winner === u && st.trophies.some((x) => x.season === st.season && x.comp === 'liga') && st.trophies.some((x) => x.season === st.season && x.comp === 'copa')) ACH('triplete', st); });
   };
   // repara calendarios con jornadas vacías (error de versiones anteriores)
   EU.repair = function (st) {
