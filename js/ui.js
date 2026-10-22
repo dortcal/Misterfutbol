@@ -98,6 +98,27 @@
     const f = bg.querySelector('.body .btn, .body input, .body .bar'); if (f) f.focus({ preventScroll: true });
     return bg;
   };
+  // descarga un archivo generado por el juego. Dentro de claude.ai usa el permiso de descargas del visor; fuera, un enlace normal.
+  UI.saveFile = async function (filename, data, mime) {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: mime || 'application/octet-stream' });
+    try {
+      const C = G.claude; const d = C && C.use ? await C.use('downloads') : null;
+      if (d) {
+        try { await d.save({ filename, data: blob }); return 'saved'; } catch (e) {
+          const code = e && e.code;
+          if (code === 'declined') return 'declined';
+          if (code === 'rate_limited') return 'busy';
+          if (['unavailable', 'not_granted', 'capability_disabled', 'capability_removed'].indexOf(code) < 0) return 'error';
+        }
+      }
+    } catch (e) { /* sin visor: enlace normal */ }
+    try {
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      return 'saved';
+    } catch (e) { return 'error'; }
+  };
   UI.closeModal = function () { document.querySelectorAll('.modal-bg').forEach((m) => m.remove()); UI.modalActs = null; };
   UI.confirm = function (text, yes, cb, danger) {
     UI.modal('Confirmar', '<p style="margin:0;font-size:17px">' + esc(text) + '</p><div class="row"><button class="btn ' + (danger ? 'warn' : '') + '" data-act="yes">' + esc(yes) + '</button><button class="btn alt back" data-act="closeModal">Cancelar</button></div>',
@@ -177,7 +198,7 @@
       '<h3 style="margin-top:12px">Dificultad (modo Jugar)</h3>' + seg('difficulty', s.difficulty, [[0.9, 'Fácil'], [1, 'Normal'], [1.08, 'Difícil']]) +
       '<h3 style="margin-top:12px">Cámara</h3>' + seg('cam', (s.camera || 'total') === 'total' ? 'total' : s.zoom, [['total', 'Total (campo entero)'], [1.3, 'Seguimiento cerca'], [1, 'Seguimiento']]) +
       '<h3 style="margin-top:12px">Dirige el segundo entrenador</h3><p class="muted" style="margin:0 0 4px">Hace los cambios y ajustes de tu equipo en Visionado y Resultado. Si no, el partido se para en el descanso para que decidas tú.</p>' + seg('assistant', s.assistant ? 1 : 0, [[1, 'Sí'], [0, 'No']]) + '</div>' +
-      '</div><div class="panel"><h3>Datos guardados</h3><p class="muted" style="margin-top:0">Las partidas se guardan en este navegador. Puedes exportarlas desde Liga Manager.</p><button class="btn warn" data-act="wipe">Borrar todas las partidas y ajustes</button></div></div>',
+      '</div><div class="panel"><h3>Datos guardados</h3><p class="muted" style="margin-top:0">Las partidas se guardan en este navegador. Para seguir en otro dispositivo, expórtalas a un archivo desde Liga Manager (o desde «Copia de seguridad» dentro de la partida) e impórtalas allí.</p><button class="btn warn" data-act="wipe">Borrar todas las partidas y ajustes</button></div></div>',
       {
         set: (el) => {
           const k = el.dataset.k, v = el.dataset.v;

@@ -25,27 +25,53 @@
         load: (el) => { const st = LG.load(+el.dataset.k); if (!st) { UI.toast('No se ha podido cargar la partida.'); return; } MGR.st = st; MGR.slot = +el.dataset.k; MGR.route(); },
         new: (el) => { MGR.slot = +el.dataset.k; MGR.ng = { players: 1, step: 0, picks: [] }; MGR.newGame(1); },
         del: (el) => UI.confirm('¿Borrar la partida ' + el.dataset.k + '?', 'Borrar', () => { U.store.del(LG.SAVE_KEY + el.dataset.k); MGR.start(); }, true),
-        export: (el) => {
-          const data = JSON.stringify(LG.load(+el.dataset.k));
-          try {
-            const blob = new Blob([data], { type: 'application/json' }); const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob); a.download = 'mister-futbol-partida-' + el.dataset.k + '.json'; document.body.appendChild(a); a.click(); a.remove();
-            UI.toast('Partida exportada.');
-          } catch (e) { UI.toast('Tu navegador no permite descargar el archivo.'); }
-        },
+        export: (el) => MGR.exportSave(+el.dataset.k),
         import: (el) => {
-          const f = el.files && el.files[0]; if (!f) return;
+          const f = el.files && el.files[0]; el.value = ''; if (!f) return;
           const r = new FileReader();
           r.onload = () => {
-            try {
-              const st = JSON.parse(r.result); if (!st.world || !st.userTeam) throw new Error('formato');
-              const k = [1, 2, 3].find((x) => !LG.slotInfo(x)) || 3;
-              LG.save(st, k); UI.toast('Partida importada en la ranura ' + k + '.'); MGR.start();
-            } catch (e) { UI.toast('El archivo no es una partida válida de Míster Fútbol.'); }
+            let st; try { st = JSON.parse(r.result); if (!st || !st.world || !st.userTeam || !st.world.teams || !st.world.teams[st.userTeam]) throw new Error('formato'); } catch (e) { UI.toast('El archivo no es una partida válida de Míster Fútbol.'); return; }
+            MGR.importSave(st);
           };
+          r.onerror = () => UI.toast('No se ha podido leer el archivo.');
           r.readAsText(f);
         },
       });
+  };
+
+  // ---------- copia de seguridad: archivo para seguir la partida en otro navegador o dispositivo
+  const slug = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  MGR.exportSave = function (k) {
+    const raw = U.store.get(LG.SAVE_KEY + k, null); const info = LG.slotInfo(k);
+    if (!raw || !info) { UI.toast('No hay ninguna partida en la ranura ' + k + '.'); return; }
+    const name = 'mister-futbol_' + slug(info.team) + '_' + slug(info.season) + '_jornada-' + Math.min(info.day + 1, 46) + '.json';
+    const data = JSON.stringify(raw); const kb = Math.round(data.length / 1024);
+    const canShare = (() => { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['{}'], 'x.json', { type: 'application/json' })] })); } catch (e) { return false; } })();
+    UI.modal('Exportar partida ' + k, '<p style="margin-top:0"><b>' + esc(info.team) + '</b> · ' + esc(info.season) + ' · Jornada ' + Math.min(info.day + 1, 46) + (info.multi ? '<br>👥 ' + esc(info.multi) : '') + '</p>' +
+      '<p class="muted">Se guarda un archivo <b>' + esc(name) + '</b> (' + kb + ' KB). Llévalo al otro dispositivo (correo, nube, USB…) y allí entra en <b>Liga Manager → Importar partida</b>.</p>' +
+      '<div class="row"><button class="btn goldb" data-act="dl">⬇ Descargar archivo</button>' + (canShare ? '<button class="btn" data-act="sh">📤 Enviar a otro dispositivo</button>' : '') + '</div>', {
+      dl: async () => {
+        const r = await UI.saveFile(name, data, 'application/json');
+        UI.toast(r === 'saved' ? 'Partida exportada.' : r === 'declined' ? 'Descarga cancelada.' : r === 'busy' ? 'Hay otra descarga pendiente. Inténtalo en un momento.' : 'Este navegador no permite descargar el archivo.');
+        if (r === 'saved') UI.closeModal();
+      },
+      sh: async () => {
+        try { await navigator.share({ files: [new File([data], name, { type: 'application/json' })], title: 'Partida de Míster Fútbol 26·27' }); UI.closeModal(); } catch (e) { /* cancelado */ }
+      },
+    });
+  };
+  // importar: a una ranura libre o, si están las tres ocupadas, a la que elija el jugador
+  MGR.importSave = function (st) {
+    const t = st.world.teams[st.userTeam]; const label = t.name + ' · ' + DB.SEASON_LABEL(st.season);
+    const put = (k) => {
+      if (!LG.save(st, k)) { UI.toast('No se ha podido guardar: el almacenamiento del navegador está lleno o bloqueado.'); return; }
+      UI.closeModal(); UI.toast('Partida importada en la ranura ' + k + '.'); MGR.start();
+    };
+    const free = [1, 2, 3].find((x) => !LG.slotInfo(x));
+    if (free) { put(free); return; }
+    UI.modal('Importar partida', '<p style="margin-top:0">Vas a importar <b>' + esc(label) + '</b>. Las tres ranuras están ocupadas: elige cuál sustituir. La partida que haya en ella se borrará.</p><nav class="menu" style="max-width:none">' +
+      [1, 2, 3].map((k) => { const s2 = LG.slotInfo(k); return '<button class="bar" data-act="slot" data-k="' + k + '"><span class="n">' + k + '</span><span class="t">Sustituir: ' + esc(s2.team) + '</span><span class="meta">' + s2.season + ' · Jornada ' + Math.min(s2.day + 1, 46) + '</span></button>'; }).join('') + '</nav>',
+      { slot: (el) => put(+el.dataset.k) });
   };
 
   // ---------- nueva partida: elegir club
@@ -189,6 +215,7 @@
       '<button class="bar small" data-act="staff" data-key="p"><span class="n">P</span><span class="t">Personal del club</span><span class="meta">' + LG.STAFF_ROLES.filter(([k]) => st.staff && st.staff[k]).length + '/7</span></button>' +
       '<button class="bar small" data-act="europe" data-key="e"><span class="n">E</span><span class="t">Competiciones internacionales</span><span class="meta">' + esc(MGR.euroMeta()) + '</span></button>' +
       '<button class="bar small" data-act="cup" data-key="c"><span class="n">C</span><span class="t">Copa del Rey</span><span class="meta">' + esc(cupMeta) + '</span></button>' +
+      '<button class="bar small grey" data-act="backup" data-key="b"><span class="n">B</span><span class="t">Copia de seguridad</span><span class="meta">Archivo para otro dispositivo</span></button>' +
       '<button class="bar small grey" data-act="quit" data-key="0"><span class="n">0</span><span class="t">Guardar y salir</span></button>' +
       '</nav><div class="panel"><h3>Noticias</h3>' + (news || '<p class="muted">Sin noticias.</p>') + '<div class="row" style="margin-top:8px"><button class="btn alt" data-act="news">Todas las noticias</button></div></div></div></div>',
       Object.assign(MGR.offerActs(() => MGR.hub()), {
@@ -196,7 +223,7 @@
         simday: () => { const s = LG.playDay(st, null); save(); MGR.dayResults(s); },
         simall: () => UI.confirm('¿Simular todas las jornadas que quedan hasta el final de la temporada?', 'Simular', () => { let g = 0; while (!st.seasonOver && !st.fired && g++ < 90) { if (LG.userFixture(st)) { LG.playDay(st, null); } else LG.playDay(st, null); } save(); MGR.route(); }),
         lineup: () => MGR.lineup(), squad: () => MGR.squad(), market: () => MGR.market(), table: () => MGR.table(T(st.userTeam).div), calendar: () => MGR.calendar(), stats: () => MGR.stats(T(st.userTeam).div),
-        training: () => MGR.training(), finance: () => MGR.finance(), club: () => MGR.club(), cup: () => MGR.cup(), staff: () => MGR.staff(), europe: () => MGR.europe(), news: () => MGR.news(), quit: () => { save(); UI.toast('Partida guardada.'); UI.mainMenu(); },
+        training: () => MGR.training(), finance: () => MGR.finance(), club: () => MGR.club(), cup: () => MGR.cup(), staff: () => MGR.staff(), europe: () => MGR.europe(), news: () => MGR.news(), quit: () => { save(); UI.toast('Partida guardada.'); UI.mainMenu(); }, backup: () => { save(); MGR.exportSave(MGR.slot || 1); },
       }));
   };
 
@@ -741,7 +768,7 @@
     let cv; try { cv = await MGR.careerImage(c); } catch (e) { UI.toast('No se ha podido crear la imagen.'); return; }
     const url = cv.toDataURL('image/png'); const name = 'mister-futbol-carrera-' + String(c.name || 'mister').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-') + '.png';
     UI.modal('Imagen de tu carrera', '<img src="' + url + '" alt="Resumen de la carrera" style="width:100%;max-width:420px;display:block;margin:0 auto;border:3px solid #1d2126"><div class="row" style="justify-content:center;margin-top:10px"><button class="btn goldb" data-act="dl">⬇ Descargar imagen</button>' + (navigator.share ? '<button class="btn" data-act="sh">📤 Compartir</button>' : '') + '</div>', {
-      dl: () => { try { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { UI.toast('Mantén pulsada la imagen para guardarla.'); } },
+      dl: () => cv.toBlob(async (blob) => { const r = await UI.saveFile(name, blob, 'image/png'); if (r === 'error') UI.toast('Mantén pulsada la imagen para guardarla.'); }, 'image/png'),
       sh: () => { cv.toBlob(async (blob) => { try { const file = new File([blob], name, { type: 'image/png' }); const data = { title: 'Míster Fútbol 26·27', text: 'Mi carrera en Míster Fútbol: ' + c.n + ' temporadas, ' + c.trophies.length + ' títulos, ' + '★'.repeat(c.legend) + ' «' + c.phrase + '». https://' + MGR.GAME_URL };
         if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share(Object.assign({ files: [file] }, data)); else await navigator.share(data); } catch (e) { /* cancelado */ } }, 'image/png'); },
     });
@@ -847,7 +874,7 @@
     let c; try { c = await MGR.seasonImage(h, R); } catch (e) { UI.toast('No se ha podido crear la imagen.'); return; }
     const url = c.toDataURL('image/png'); const name = 'mister-futbol-' + h.report.team + '-' + h.season + '.png';
     UI.modal('Imagen para redes', '<img src="' + url + '" alt="Resumen de la temporada" style="width:100%;max-width:420px;display:block;margin:0 auto;border:3px solid #1d2126"><div class="row" style="justify-content:center;margin-top:10px"><button class="btn goldb" data-act="dl">⬇ Descargar imagen</button>' + (navigator.share ? '<button class="btn" data-act="sh">📤 Compartir</button>' : '') + '</div><p class="muted center" style="margin:6px 0 0">Comparte tu temporada en redes y reta a tus amigos.</p>', {
-      dl: () => { try { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { UI.toast('Mantén pulsada la imagen para guardarla.'); } },
+      dl: () => c.toBlob(async (blob) => { const r = await UI.saveFile(name, blob, 'image/png'); if (r === 'error') UI.toast('Mantén pulsada la imagen para guardarla.'); }, 'image/png'),
       sh: () => { c.toBlob(async (blob) => {
         try {
           const file = new File([blob], name, { type: 'image/png' });
