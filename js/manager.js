@@ -339,17 +339,34 @@
 
   // ---------- plantilla
   MGR.sortSquad = 'line';
+  MGR.squadView = 'datos';   // 'datos' (media, edad, forma, valor) o 'stats' (estadísticas de Liga)
   MGR.squad = function () {
     const st = MGR.st; const w = st.world;
     const sq = DB.teamPlayers(w, st.userTeam);
-    const so = MGR.sortSquad;
+    const so = MGR.sortSquad; const view = MGR.squadView;
     const L = ['POR', 'DEF', 'MED', 'DEL'];
-    sq.sort((a, b) => so === 'ovr' ? b.ovr - a.ovr : so === 'age' ? a.age - b.age : so === 'value' ? b.value - a.value : so === 'g' ? b.st.g - a.st.g : (L.indexOf(a.line) - L.indexOf(b.line)) || b.ovr - a.ovr);
-    const th = (k, l, cls) => '<th class="' + (cls || '') + '"><button class="tab ' + (so === k ? 'on' : '') + '" style="padding:2px 6px;font-size:11px" data-act="sort" data-k="' + k + '">' + l + '</button></th>';
-    UI.show(MGR.top() + UI.head('Plantilla', sq.length + ' jugadores · masa salarial ' + U.money(LG.wageBill(st, st.userTeam)) + '/temporada', 'back') + '<div class="wrap"><div class="panel" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th>' + th('line', 'Pos') + '<th>Jugador</th>' + th('ovr', 'Med', 'num') + th('age', 'Edad', 'num hide-sm') + '<th class="hide-sm">Forma</th><th class="num hide-sm">Moral</th>' + th('g', 'G', 'num') + '<th class="num hide-sm">PJ</th><th class="num hide-sm">Nota</th>' + th('value', 'Valor', 'num hide-sm') + '</tr></thead><tbody>' +
-      sq.map((p) => '<tr class="click" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td><td><img src="' + GFX.face(p, T(p.team).kit.home.p, 40) + '" width="20" height="20" alt="" style="vertical-align:middle"> ' + esc(p.name) + UI.status(p) + (st.lineup.xi.indexOf(p.id) >= 0 ? '<span class="tag t-xi">XI</span>' : '') + '</td><td class="num">' + UI.ovr(p.ovr) + '</td><td class="num hide-sm">' + p.age + '</td><td class="hide-sm">' + UI.fit(p.fit) + '</td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td class="num">' + p.st.g + '</td><td class="num hide-sm">' + p.st.pj + '</td><td class="num hide-sm">' + (p.st.ps ? (p.st.rat / p.st.ps).toFixed(1) : '—') + '</td><td class="num hide-sm">' + U.money(p.value) + '</td></tr>').join('') +
-      '</tbody></table></div></div></div>',
-      { back: () => MGR.hub(), sort: (el) => { MGR.sortSquad = el.dataset.k; MGR.squad(); }, pl: (el) => MGR.playerModal(+el.dataset.id, () => MGR.squad()) });
+    const nota = (p) => (p.st.ps ? p.st.rat / p.st.ps : -1);
+    const by = { ovr: (a, b) => b.ovr - a.ovr, age: (a, b) => a.age - b.age, value: (a, b) => b.value - a.value, g: (a, b) => b.st.g - a.st.g || b.st.a - a.st.a,
+      a: (a, b) => b.st.a - a.st.a || b.st.g - a.st.g, pj: (a, b) => b.st.pj - a.st.pj, nota: (a, b) => nota(b) - nota(a), ta: (a, b) => b.st.ta - a.st.ta || b.st.tr - a.st.tr, tr: (a, b) => b.st.tr - a.st.tr || b.st.ta - a.st.ta };
+    sq.sort((a, b) => (by[so] ? by[so](a, b) : 0) || (L.indexOf(a.line) - L.indexOf(b.line)) || b.ovr - a.ovr);
+    const th = (k, l, cls, title) => '<th class="' + (cls || '') + '"' + (title ? ' title="' + title + '"' : '') + '><button class="tab ' + (so === k ? 'on' : '') + '" style="padding:2px 5px;font-size:11px;min-width:0" data-act="sort" data-k="' + k + '">' + l + '</button></th>';
+    const name = (p) => '<td><img src="' + GFX.face(p, T(p.team).kit.home.p, 40) + '" width="20" height="20" alt="" style="vertical-align:middle"> ' + esc(p.name) + UI.status(p) + (st.lineup.xi.indexOf(p.id) >= 0 ? '<span class="tag t-xi">XI</span>' : '') + '</td>';
+    const tabs = '<div class="tabs" style="margin-bottom:6px"><button class="tab ' + (view === 'datos' ? 'on' : '') + '" data-act="view" data-v="datos">Datos</button><button class="tab ' + (view === 'stats' ? 'on' : '') + '" data-act="view" data-v="stats">Estadísticas de Liga</button></div>';
+    let head, rows;
+    if (view === 'stats') {
+      const tot = sq.reduce((t, p) => { t.g += p.st.g; t.a += p.st.a; t.ta += p.st.ta; t.tr += p.st.tr; return t; }, { g: 0, a: 0, ta: 0, tr: 0 });
+      head = '<th class="hide-sm">#</th>' + th('line', 'Pos') + '<th>Jugador</th>' + th('pj', 'PJ', 'num', 'Partidos jugados') + th('g', 'G', 'num', 'Goles') + th('a', 'A', 'num', 'Asistencias') + th('nota', 'Nota', 'num', 'Nota media') + th('ta', '🟨', 'num', 'Tarjetas amarillas') + th('tr', '🟥', 'num', 'Tarjetas rojas');
+      const sname = (p) => '<td><span class="hide-sm"><img src="' + GFX.face(p, T(p.team).kit.home.p, 40) + '" width="20" height="20" alt="" style="vertical-align:middle"> ' + esc(p.name) + '</span><span class="show-sm">' + esc(p.short) + '</span>' + UI.status(p) + '</td>';
+      rows = sq.map((p) => '<tr class="click" data-act="pl" data-id="' + p.id + '"><td class="hide-sm">' + p.num + '</td><td><span class="pos-tag l-' + p.line + '" title="' + esc(DB.ROLE_NAME[p.role]) + '">' + p.role + '</span></td>' + sname(p) + '<td class="num">' + p.st.pj + '</td><td class="num">' + (p.st.g || '·') + '</td><td class="num">' + (p.st.a || '·') + '</td><td class="num">' + (p.st.ps ? '<b>' + (p.st.rat / p.st.ps).toFixed(1) + '</b>' : '—') + '</td><td class="num">' + (p.st.ta || '·') + '</td><td class="num">' + (p.st.tr || '·') + '</td></tr>').join('') +
+        '<tr><td class="hide-sm"></td><td></td><td><b>Total</b></td><td></td><td class="num"><b>' + tot.g + '</b></td><td class="num"><b>' + tot.a + '</b></td><td></td><td class="num"><b>' + tot.ta + '</b></td><td class="num"><b>' + tot.tr + '</b></td></tr>';
+    } else {
+      head = '<th>#</th>' + th('line', 'Pos') + '<th>Jugador</th>' + th('ovr', 'Med', 'num') + th('age', 'Edad', 'num hide-sm') + '<th class="hide-sm">Forma</th><th class="num hide-sm">Moral</th>' + th('g', 'G', 'num') + th('a', 'A', 'num hide-sm', 'Asistencias') + '<th class="num hide-sm">PJ</th>' + th('nota', 'Nota', 'num hide-sm') + th('value', 'Valor', 'num hide-sm');
+      rows = sq.map((p) => '<tr class="click" data-act="pl" data-id="' + p.id + '"><td>' + p.num + '</td><td>' + UI.pos(p) + '</td>' + name(p) + '<td class="num">' + UI.ovr(p.ovr) + '</td><td class="num hide-sm">' + p.age + '</td><td class="hide-sm">' + UI.fit(p.fit) + '</td><td class="num hide-sm">' + Math.round(p.mor) + '</td><td class="num">' + p.st.g + '</td><td class="num hide-sm">' + p.st.a + '</td><td class="num hide-sm">' + p.st.pj + '</td><td class="num hide-sm">' + (p.st.ps ? (p.st.rat / p.st.ps).toFixed(1) : '—') + '</td><td class="num hide-sm">' + U.money(p.value) + '</td></tr>').join('');
+    }
+    UI.show(MGR.top() + UI.head('Plantilla', sq.length + ' jugadores · masa salarial ' + U.money(LG.wageBill(st, st.userTeam)) + '/temporada', 'back') + '<div class="wrap"><div class="panel" style="padding:6px">' + tabs +
+      (view === 'stats' ? '<p class="muted" style="margin:0 4px 6px">Partidos, goles, asistencias, nota media y tarjetas en la Liga de esta temporada. Toca una columna para ordenar.</p>' : '') +
+      '<div class="tbl-wrap"><table class="tbl' + (view === 'stats' ? ' sqstats' : '') + '"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div></div></div>',
+      { back: () => MGR.hub(), view: (el) => { MGR.squadView = el.dataset.v; if (el.dataset.v === 'stats' && ['ovr', 'age', 'value'].indexOf(MGR.sortSquad) >= 0) MGR.sortSquad = 'line'; MGR.squad(); }, sort: (el) => { MGR.sortSquad = el.dataset.k; MGR.squad(); }, pl: (el) => MGR.playerModal(+el.dataset.id, () => MGR.squad()) });
   };
 
   MGR.playerModal = function (pid, refresh) {

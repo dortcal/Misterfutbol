@@ -24,6 +24,7 @@ Juego de fútbol y mánager para navegador (ordenador, tablet y móvil) con los 
   - **Supercopa de España** (campeón y subcampeón de Liga y finalistas de Copa). La edición 2027 se juega en Estambul con los emparejamientos reales.
   - **Premios** por ronda superada y por título en todas las competiciones, según su importancia.
   - **Eliminatorias**: con empate (o global igualado) se juega la prórroga, con un cambio más, y la tanda de penaltis dentro del propio partido.
+  - **Plantilla** con dos vistas: «Datos» (media, edad, forma, moral, goles, asistencias, nota y valor) y «Estadísticas de Liga» (partidos, goles, asistencias, nota media, amarillas y rojas, con totales). Se puede ordenar por cualquier columna y la vista de estadísticas cabe en el móvil en vertical.
   - **Tarjetas y sanciones por competición**:
     - En Liga, 5 amarillas suponen un partido de sanción en Liga.
     - En Copa, Supercopa y competiciones europeas, 3 amarillas suponen un partido de sanción en esa competición.

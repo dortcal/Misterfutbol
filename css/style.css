@@ -431,3 +431,7 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 
 /* móviles estrechos: las clasificaciones caben enteras (con diferencia de goles) */
 @media (max-width: 380px) { table.tbl { font-size: 13px; } table.tbl td, table.tbl th { padding: 4px 3px; } }
+.show-sm { display: none; }
+@media (max-width: 560px) { .show-sm { display: inline; } }
+table.sqstats th .tab { letter-spacing: 0; padding: 2px 4px !important; }
+@media (max-width: 560px) { table.sqstats td, table.sqstats th { padding-left: 3px; padding-right: 3px; } }
