@@ -428,3 +428,6 @@ input[type=range] { accent-color: var(--bar); width: 100%; }
 .fr-players .btn { min-width: 0; }
 .fr-2p { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .fr-2p label.f { flex: 1 1 200px; }
+
+/* móviles estrechos: las clasificaciones caben enteras (con diferencia de goles) */
+@media (max-width: 380px) { table.tbl { font-size: 13px; } table.tbl td, table.tbl th { padding: 4px 3px; } }
