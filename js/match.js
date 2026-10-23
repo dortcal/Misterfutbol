@@ -398,7 +398,7 @@
     // side = equipo que saca
     const b = this.ball; const bx0 = b.x, by0 = b.y, bz0 = b.z || 0;
     const snap = this.all().map((p) => [p, p.x, p.y]);
-    Object.assign(b, { x, y, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null, shotSaveTried: false, script: null, scriptCross: null, cornerOut: false, deflect: null });
+    Object.assign(b, { x, y, z: 0, vx: 0, vy: 0, vz: 0, owner: null, type: null, target: null, offside: null, shotSaveTried: false, script: null, scriptCross: null, cornerOut: false, deflect: null, holdFrom: null });
     let taker = null;
     if (type === 'goalkick') taker = this.gk(side);
     else if (type === 'penalty') {
@@ -1666,6 +1666,12 @@
     if (b.owner) {
       const p = b.owner;
       b.x = p.x + Math.cos(p.face) * 0.55; b.y = p.y + Math.sin(p.face) * 0.55; b.z = 0;
+      const hf = b.holdFrom;   // blocaje del portero: el balón viaja hasta sus manos en vez de aparecer de golpe
+      if (hf) {
+        const u = U.clamp((this.realT - hf.t0) / hf.dur, 0, 1);
+        if (u >= 1 || hf.p !== p) b.holdFrom = null;
+        else { const e = u * (2 - u); b.x = hf.x + (b.x - hf.x) * e; b.y = hf.y + (b.y - hf.y) * e; b.z = hf.z * (1 - e); }
+      }
       b.vx = p.vx; b.vy = p.vy; b.vz = 0; b.spin += Math.hypot(p.vx, p.vy) * dt * 3;
       this.checkOut();
       return;
@@ -1853,6 +1859,8 @@
     gk.st.saves++; if (onTarget) { this.stats.saves[s]++; this.events.push({ type: 'save', side: s, min: this.minute(), pid: gk.d.id }); }
     const sp = Math.hypot(b.vx, b.vy);
     if (sp < 21 && this.R() < 0.35 + gk.a.por / 300) {
+      const cd = U.dist(b.x, b.y, gk.x, gk.y);
+      b.holdFrom = cd > 1.2 ? { x: b.x, y: b.y, z: b.z || 0, t0: this.realT, dur: U.clamp(cd / 20, 0.1, 0.35), p: gk } : null;
       b.owner = gk; b.last = gk; b.type = null; b.vx = b.vy = b.vz = 0; b.z = 0; gk.holdT = -0.6;
       this.say('catch', { pid: gk.d.id, side: s });
     } else {
@@ -1877,7 +1885,8 @@
       if (b.y > GY1 && b.y < GY2 && b.z < GOAL_H) {
         if (!this.director || (b.script && this.pend.length && this.pend[0].side === 1 - defSide)) { this.goal(1 - defSide); return; }
         // un balón que la simulación no da por gol se queda fuera (rozando el palo)
-        b.y = b.y < PW / 2 ? GY1 - 0.3 : GY2 + 0.3;
+        // (no se teletransporta: el balón rueda hasta fuera del palo mientras dura el balón muerto)
+        b.vy = ((b.y < PW / 2 ? GY1 - 0.3 : GY2 + 0.3) - b.y) / 0.49; b.vx *= 0.3;
       }
       const lastSide = b.cornerOut ? defSide : b.last ? b.last.side : defSide; b.cornerOut = false; b.scriptCross = null; b.deflect = null;
       if (lastSide === defSide) {
