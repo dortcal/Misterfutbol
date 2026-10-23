@@ -217,7 +217,7 @@
       '<button class="bar small" data-act="cup" data-key="c"><span class="n">C</span><span class="t">Copa del Rey</span><span class="meta">' + esc(cupMeta) + '</span></button>' +
       '<button class="bar small grey" data-act="backup" data-key="b"><span class="n">B</span><span class="t">Copia de seguridad</span><span class="meta">Archivo para otro dispositivo</span></button>' +
       '<button class="bar small grey" data-act="quit" data-key="0"><span class="n">0</span><span class="t">Guardar y salir</span></button>' +
-      '</nav><div class="panel"><h3>Noticias</h3>' + (news || '<p class="muted">Sin noticias.</p>') + '<div class="row" style="margin-top:8px"><button class="btn alt" data-act="news">Todas las noticias</button></div></div></div></div>',
+      '</nav><div class="hub-side"><div class="panel"><h3>Noticias</h3>' + (news || '<p class="muted">Sin noticias.</p>') + '<div class="row" style="margin-top:8px"><button class="btn alt" data-act="news">Todas las noticias</button></div></div>' + MGR.miniTable(st) + '</div></div></div>',
       Object.assign(MGR.offerActs(() => MGR.hub()), {
         play: (el) => MGR.play(el.dataset.m), endturn: () => MGR.endTurn(),
         simday: () => { const s = LG.playDay(st, null); save(); MGR.dayResults(s); },
@@ -449,12 +449,23 @@
   };
 
   // ---------- clasificación
+  // zona de la clasificación (Champions, descenso...) según la posición
+  MGR.zoneOf = function (dv, pos) {
+    if (dv === 1) return pos <= 4 ? 'z-ucl' : pos === 5 ? 'z-uel' : pos === 6 ? 'z-uecl' : pos >= 18 ? 'z-down' : '';
+    return pos <= 2 ? 'z-up' : pos <= 6 ? 'z-po' : pos >= 19 ? 'z-down' : '';
+  };
+  // minitabla del menú principal: 7 filas alrededor de tu equipo (sin enlaces de más, solo para tener la liga a la vista)
+  MGR.miniTable = function (st) {
+    const dv = T(st.userTeam).div; if (dv > 2) return '';
+    const rows = LG.table(st, dv); const i = rows.findIndex((r) => r.id === st.userTeam); if (i < 0) return '';
+    const n = 7, from = Math.max(0, Math.min(rows.length - n, i - 3)); const part = rows.slice(from, from + n);
+    return '<div class="panel mini-tbl click" data-act="table" title="Ver la clasificación completa"><h3>' + (dv === 1 ? 'Primera' : 'Segunda') + ' · clasificación</h3><table class="tbl"><tbody>' +
+      part.map((r) => '<tr class="' + (r.id === st.userTeam ? 'me' : '') + '"><td class="mt-pos"><span class="zone ' + MGR.zoneOf(dv, r.pos) + '"></span>' + r.pos + '</td><td>' + GFX.badgeImg(T(r.id), 18) + ' ' + esc(T(r.id).short) + '</td><td class="num muted">' + r.pj + ' PJ</td><td class="num muted">' + (r.gf - r.gc > 0 ? '+' : '') + (r.gf - r.gc) + '</td><td class="num"><b>' + r.pts + '</b></td></tr>').join('') +
+      '</tbody></table>' + (from > 0 ? '<p class="muted mt-note">Líder: ' + esc(T(rows[0].id).short) + ' · ' + rows[0].pts + ' pts (' + (rows[0].pts - rows[i].pts > 0 ? '+' + (rows[0].pts - rows[i].pts) + ' sobre ti' : 'empatado contigo') + ')</p>' : '') + '</div>';
+  };
   MGR.table = function (dv) {
     const st = MGR.st; const rows = LG.table(st, dv);
-    const zone = (pos) => {
-      if (dv === 1) return pos <= 4 ? 'z-ucl' : pos === 5 ? 'z-uel' : pos === 6 ? 'z-uecl' : pos >= 18 ? 'z-down' : '';
-      return pos <= 2 ? 'z-up' : pos <= 6 ? 'z-po' : pos >= 19 ? 'z-down' : '';
-    };
+    const zone = (pos) => MGR.zoneOf(dv, pos);
     const legend = dv === 1 ? '<span class="zone z-ucl"></span>Champions <span class="zone z-uel"></span>Europa League <span class="zone z-uecl"></span>Conference <span class="zone z-down"></span>Descenso' : '<span class="zone z-up"></span>Ascenso directo <span class="zone z-po"></span>Playoff de ascenso <span class="zone z-down"></span>Descenso a 1ª RFEF';
     UI.show(MGR.top() + UI.head('Clasificación', divName(dv) + ' ' + DB.SEASON_LABEL(st.season), 'back') + '<div class="wrap"><div class="tabs">' + [[1, 'Primera'], [2, 'Segunda']].map(([d, l]) => '<button class="tab ' + (d === dv ? 'on' : '') + '" data-act="dv" data-d="' + d + '">' + l + '</button>').join('') + '</div>' +
       '<div class="panel" style="padding:6px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Equipo</th><th class="num">Pts</th><th class="num">PJ</th><th class="num hide-sm">G</th><th class="num hide-sm">E</th><th class="num hide-sm">P</th><th class="num">GF</th><th class="num">GC</th><th class="num">DG</th><th class="hide-sm">Racha</th></tr></thead><tbody>' +

@@ -595,6 +595,7 @@
     this.ownerDecision(dt);
     this.humanAct(dt);
     this.tackles(dt);
+    if (this.phase !== 'play') return;   // una falta pitada en este mismo fotograma: el balón no se mueve con el jugador que lo tenía
     this.moveAll(dt, false);
     this.ballPhysics(dt);
     this.subsAI();
