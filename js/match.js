@@ -30,6 +30,7 @@
     this.phase = 'kickoff'; this.phaseT = 1.2; this.restart = null;
     this.score = [0, 0];
     this.events = []; this.subsIn = [[], []]; this.subsLeft = [5, 5]; this.subWindows = [3, 3];
+    this.pendSubs = [[], []]; this.simSubs = [];   // cambios pendientes: solo se hacen con el juego parado
     this.stats = { shots: [0, 0], onTarget: [0, 0], corners: [0, 0], fouls: [0, 0], possT: [1, 1], offside: [0, 0], saves: [0, 0] };
     this.msgQ = []; this.hooks = cfg.hooks || {};
     this.excite = 0; this.realT = 0;
@@ -90,7 +91,7 @@
       if ((e.type === 'yellow' || e.type === 'red') && p) { this.cardQ.push({ e, wait: 0 }); return; }
       if (e.type === 'offside') { this.spQ.push({ type: 'offside', side: e.side, min: e.min, wait: 0 }); return; }
       if (e.type === 'injury' && p) { p.injured = true; this.events.push(e); this.say('injury', { pid: e.pid, side: e.side }); }
-      if (e.type === 'sub') { const out = find(e.side, e.out); if (out) { this._fromSim = true; this.substitute(e.side, out, e.pid); this._fromSim = false; } }
+      if (e.type === 'sub') { this.simSubs.push({ s: e.side, out: e.out, inId: e.pid }); }   // se hace en la próxima parada del juego
     });
     // el cansancio que se ve es el de la simulación
     this.P.forEach((arr) => arr.forEach((p) => { const v = this.dres.stam[p.d.id]; if (v !== undefined) p.stam = v; }));
@@ -512,6 +513,7 @@
     dt = dt || STEP; this.realT += dt;
     if (this.phase === 'end') return;
     const b = this.ball;
+    if (this.phase !== 'play') this.applyPendingSubs();   // el árbitro solo deja entrar a los suplentes con el juego parado
     if (this.phase === 'halftime') { this.phaseT -= dt; if (this.phaseT <= 0 && !this.cfg.waitHalftime) this.resumeBreak(); return; }
     if (this.phase === 'shootout') return;
     if (this.phase === 'goal') {
@@ -637,6 +639,7 @@
     this.endMatch();
   };
   MP.resumeBreak = function () {
+    this.applyPendingSubs();
     if (this.half === 1.5) this.startSecondHalf();
     else if (this.half === 2.5) this.startExtra(3);
     else if (this.half === 3.5) this.startExtra(4);
@@ -1572,6 +1575,28 @@
     this.P.forEach((arr, s) => arr.forEach((p) => { p.a = this.makeMP(p.d, s, p.slot).a; }));
   };
 
+  // cambios en cola: los de la persona (se pueden deshacer) y los que decide la simulación
+  MP.subsFree = function (s) { return this.subsLeft[s] - this.pendSubs[s].length; };
+  MP.queueSub = function (s, out, inId) {
+    if (!out || out.off || this.subsFree(s) <= 0) return false;
+    if (this.pendSubs[s].some((q) => q.out === out.d.id || q.inId === inId)) return false;
+    if (!this.benchAvail(s).some((p) => p.id === inId)) return false;
+    this.pendSubs[s].push({ out: out.d.id, inId }); return true;
+  };
+  MP.undoSub = function (s) { return this.pendSubs[s].pop() || null; };
+  MP.pendingCount = function () { return this.pendSubs[0].length + this.pendSubs[1].length + this.simSubs.length; };
+  MP.applyPendingSubs = function (force) {
+    if (!force && this.phase === 'play') return 0;
+    if (!this.pendingCount()) return 0;
+    let n = 0; const find = (side, id) => this.P[side].find((p) => p.d.id === id && !p.off);
+    const sim = this.simSubs; this.simSubs = [];
+    sim.forEach((q) => { const out = find(q.s, q.out); if (out) { this._fromSim = true; if (this.substitute(q.s, out, q.inId)) n++; this._fromSim = false; } });
+    for (let s = 0; s < 2; s++) {
+      const list = this.pendSubs[s]; this.pendSubs[s] = [];
+      list.forEach((q) => { const out = find(s, q.out); if (out && this.substitute(s, out, q.inId)) n++; });
+    }
+    return n;
+  };
   MP.substitute = function (s, out, inId) {
     if (this.subsLeft[s] <= 0 || out.off) return false;
     const bench = this.benchAvail(s);
@@ -2047,6 +2072,7 @@
 
   // Termina el partido con la simulación rápida desde el minuto actual
   MP.finishQuick = function () {
+    this.simSubs = []; this.applyPendingSubs(true);   // los cambios de la simulación ya están en su resultado; los tuyos se hacen ahora
     const partial = this.director ? JSON.parse(JSON.stringify(this.dres)) : this.result(); partial.done = false;
     if (this.director) { partial.events.forEach((e) => { delete e._v; }); partial.score = partial.score.slice(); }
     const et = this.half >= 2.5;
