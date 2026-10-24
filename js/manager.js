@@ -10,33 +10,70 @@
   MGR.divName = divName;
   const objChip = (s) => '<span class="obj-chip ' + s.level + '">' + (s.level === 'ok' ? 'En objetivo' : s.level === 'riesgo' ? 'En riesgo' : 'Lejos') + '</span>';
 
-  // ---------- partidas guardadas
+  // ---------- partidas guardadas: primero eliges qué quieres hacer y después en qué ranura
+  const slotLine = (s) => (s.multi ? '👥 ' + esc(s.multi) + ' · ' : '') + s.season + ' · ' + divName(s.div) + ' · Jornada ' + Math.min(s.day + 1, 46);
   MGR.start = function () {
     UI.wantMusic = true;
-    const slots = [1, 2, 3].map((k) => [k, LG.slotInfo(k)]);
-    UI.show(UI.head('Liga Manager', 'Elige una partida o empieza una nueva', 'menu') + '<div class="wrap"><nav class="menu" style="max-width:none">' +
+    const n = [1, 2, 3].filter((k) => LG.slotInfo(k)).length; const has = n > 0;
+    const bar = (what, key, label, meta, grey, off) => '<button class="bar ' + (grey ? 'grey' : '') + '" data-act="pick" data-what="' + what + '" data-key="' + key + '"' + (off ? ' disabled' : '') + '><span class="n">' + key + '</span><span class="t">' + label + '</span><span class="meta">' + meta + '</span></button>';
+    UI.show(UI.head('Liga Manager', 'Elige qué quieres hacer con tus partidas', 'menu') + '<div class="wrap"><nav class="menu" style="max-width:none">' +
+      bar('load', '1', 'Continuar partida', has ? n + (n > 1 ? ' guardadas' : ' guardada') : 'Sin partidas guardadas', !has, !has) +
+      bar('new', '2', 'Nueva partida', 'Elegirás la ranura', false, false) +
+      bar('export', '3', 'Exportar partida', has ? 'Archivo para otro dispositivo' : 'Sin partidas guardadas', true, !has) +
+      bar('import', '4', 'Importar partida', 'Desde un archivo', true, false) +
+      bar('del', '5', 'Borrar partida', has ? 'Elegirás la ranura' : 'Sin partidas guardadas', true, !has) +
+      '</nav><div class="panel"><p class="muted" style="margin:0">Las partidas se guardan automáticamente en este navegador después de cada jornada. Hay tres ranuras.</p></div></div>',
+      { pick: (el) => MGR.slotPick(el.dataset.what) });
+  };
+  const PICK = {
+    load: ['Continuar partida', 'Elige la partida que quieres continuar', true],
+    new: ['Nueva partida', 'Elige en qué ranura empezarla', false],
+    export: ['Exportar partida', 'Elige la partida que quieres exportar', true],
+    import: ['Importar partida', 'Elige en qué ranura guardar la partida importada', false],
+    del: ['Borrar partida', 'Elige la partida que quieres borrar', true],
+  };
+  MGR.slotPick = function (what) {
+    const [title, sub, onlySaved] = PICK[what];
+    const slots = [1, 2, 3].map((k) => [k, LG.slotInfo(k)]).filter(([, s]) => !onlySaved || s);
+    if (!slots.length) { MGR.start(); return; }
+    const occupiedNote = (what === 'new' || what === 'import');
+    UI.show(UI.head(title, sub, 'back') + '<div class="wrap"><nav class="menu" style="max-width:none">' +
       slots.map(([k, s]) => s ?
-        '<button class="bar" data-act="load" data-k="' + k + '" data-key="' + k + '"><span class="n">' + k + '</span><span class="t">' + esc(s.team) + '</span><span class="meta">' + (s.multi ? '👥 ' + esc(s.multi) + ' · ' : '') + s.season + ' · ' + divName(s.div) + ' · Jornada ' + Math.min(s.day + 1, 46) + '</span></button>' :
-        '<button class="bar grey" data-act="new" data-k="' + k + '" data-key="' + k + '"><span class="n">' + k + '</span><span class="t">Partida vacía</span><span class="meta">Nueva partida</span></button>').join('') +
-      '</nav><div class="panel"><h3>Copias de seguridad</h3><p class="muted" style="margin-top:0">Las partidas se guardan automáticamente en este navegador después de cada jornada.</p><div class="row">' +
-      slots.filter(([, s]) => s).map(([k]) => '<button class="btn alt" data-act="export" data-k="' + k + '">Exportar partida ' + k + '</button><button class="btn warn" data-act="del" data-k="' + k + '">Borrar ' + k + '</button>').join('') +
-      '<label class="btn alt" style="cursor:pointer">Importar partida<input type="file" accept=".json,application/json" data-chg="import" hidden></label></div></div></div>',
+        '<button class="bar ' + (what === 'del' ? 'red' : occupiedNote ? 'grey' : '') + '" data-act="slot" data-k="' + k + '" data-key="' + k + '"><span class="n">' + k + '</span><span class="t">' + (occupiedNote ? 'Sustituir: ' : '') + esc(s.team) + '</span><span class="meta">' + slotLine(s) + '</span></button>' :
+        '<button class="bar" data-act="slot" data-k="' + k + '" data-key="' + k + '"><span class="n">' + k + '</span><span class="t">Ranura vacía</span><span class="meta">' + (what === 'new' ? 'Nueva partida' : 'Libre') + '</span></button>').join('') +
+      '</nav>' + (occupiedNote && slots.some(([, s]) => s) ? '<div class="panel"><p class="muted" style="margin:0">Si eliges una ranura ocupada, se te pedirá confirmación antes de sustituir esa partida.</p></div>' : '') + '</div>',
       {
-        load: (el) => { const st = LG.load(+el.dataset.k); if (!st) { UI.toast('No se ha podido cargar la partida.'); return; } MGR.st = st; MGR.slot = +el.dataset.k; MGR.route(); },
-        new: (el) => { MGR.slot = +el.dataset.k; MGR.ng = { players: 1, step: 0, picks: [] }; MGR.newGame(1); },
-        del: (el) => UI.confirm('¿Borrar la partida ' + el.dataset.k + '?', 'Borrar', () => { U.store.del(LG.SAVE_KEY + el.dataset.k); MGR.start(); }, true),
-        export: (el) => MGR.exportSave(+el.dataset.k),
-        import: (el) => {
-          const f = el.files && el.files[0]; el.value = ''; if (!f) return;
-          const r = new FileReader();
-          r.onload = () => {
-            let st; try { st = JSON.parse(r.result); if (!st || !st.world || !st.userTeam || !st.world.teams || !st.world.teams[st.userTeam]) throw new Error('formato'); } catch (e) { UI.toast('El archivo no es una partida válida de Míster Fútbol.'); return; }
-            MGR.importSave(st);
+        back: () => MGR.start(),
+        slot: (el) => {
+          const k = +el.dataset.k; const info = LG.slotInfo(k);
+          const go = () => {
+            if (what === 'load') { const st = LG.load(k); if (!st) { UI.toast('No se ha podido cargar la partida.'); return; } MGR.st = st; MGR.slot = k; MGR.route(); }
+            else if (what === 'new') { MGR.slot = k; MGR.ng = { players: 1, step: 0, picks: [] }; MGR.newGame(1); }
+            else if (what === 'export') MGR.exportSave(k);
+            else if (what === 'import') MGR.importPick(k);
+            else if (what === 'del') UI.confirm('¿Borrar la partida ' + k + ' (' + (info ? info.team : '') + ')? No se puede deshacer.', 'Borrar', () => { U.store.del(LG.SAVE_KEY + k); UI.toast('Partida ' + k + ' borrada.'); MGR.start(); }, true);
           };
-          r.onerror = () => UI.toast('No se ha podido leer el archivo.');
-          r.readAsText(f);
+          if (info && (what === 'new' || what === 'import')) UI.confirm('La ranura ' + k + ' tiene la partida de ' + info.team + '. ¿Sustituirla' + (what === 'new' ? ' por una nueva partida?' : ' por la partida importada?') + ' Se borrará al ' + (what === 'new' ? 'empezar la nueva' : 'importar') + '.', 'Sustituir', go, true);
+          else go();
         },
       });
+  };
+  // importar: tras elegir ranura se abre el selector de archivo
+  MGR.importPick = function (k) {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json'; inp.style.display = 'none'; document.body.appendChild(inp);
+    const done = () => { if (inp.parentNode) inp.parentNode.removeChild(inp); };
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0]; done(); if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        let st; try { st = JSON.parse(r.result); if (!st || !st.world || !st.userTeam || !st.world.teams || !st.world.teams[st.userTeam]) throw new Error('formato'); } catch (e) { UI.toast('El archivo no es una partida válida de Míster Fútbol.'); return; }
+        MGR.importSave(st, k);
+      };
+      r.onerror = () => UI.toast('No se ha podido leer el archivo.');
+      r.readAsText(f);
+    });
+    inp.addEventListener('cancel', () => { done(); });
+    inp.click();
   };
 
   // ---------- copia de seguridad: archivo para seguir la partida en otro navegador o dispositivo
@@ -48,7 +85,7 @@
     const data = JSON.stringify(raw); const kb = Math.round(data.length / 1024);
     const canShare = (() => { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['{}'], 'x.json', { type: 'application/json' })] })); } catch (e) { return false; } })();
     UI.modal('Exportar partida ' + k, '<p style="margin-top:0"><b>' + esc(info.team) + '</b> · ' + esc(info.season) + ' · Jornada ' + Math.min(info.day + 1, 46) + (info.multi ? '<br>👥 ' + esc(info.multi) : '') + '</p>' +
-      '<p class="muted">Se guarda un archivo <b>' + esc(name) + '</b> (' + kb + ' KB). Llévalo al otro dispositivo (correo, nube, USB…) y allí entra en <b>Liga Manager → Importar partida</b>.</p>' +
+      '<p class="muted">Se guarda un archivo <b>' + esc(name) + '</b> (' + kb + ' KB). Llévalo al otro dispositivo (correo, nube, USB…) y allí entra en <b>Liga Manager → Importar partida</b> y elige la ranura.</p>' +
       '<div class="row"><button class="btn goldb" data-act="dl">⬇ Descargar archivo</button>' + (canShare ? '<button class="btn" data-act="sh">📤 Enviar a otro dispositivo</button>' : '') + '</div>', {
       dl: async () => {
         const r = await UI.saveFile(name, data, 'application/json');
@@ -60,18 +97,11 @@
       },
     });
   };
-  // importar: a una ranura libre o, si están las tres ocupadas, a la que elija el jugador
-  MGR.importSave = function (st) {
-    const t = st.world.teams[st.userTeam]; const label = t.name + ' · ' + DB.SEASON_LABEL(st.season);
-    const put = (k) => {
-      if (!LG.save(st, k)) { UI.toast('No se ha podido guardar: el almacenamiento del navegador está lleno o bloqueado.'); return; }
-      UI.closeModal(); UI.toast('Partida importada en la ranura ' + k + '.'); MGR.start();
-    };
-    const free = [1, 2, 3].find((x) => !LG.slotInfo(x));
-    if (free) { put(free); return; }
-    UI.modal('Importar partida', '<p style="margin-top:0">Vas a importar <b>' + esc(label) + '</b>. Las tres ranuras están ocupadas: elige cuál sustituir. La partida que haya en ella se borrará.</p><nav class="menu" style="max-width:none">' +
-      [1, 2, 3].map((k) => { const s2 = LG.slotInfo(k); return '<button class="bar" data-act="slot" data-k="' + k + '"><span class="n">' + k + '</span><span class="t">Sustituir: ' + esc(s2.team) + '</span><span class="meta">' + s2.season + ' · Jornada ' + Math.min(s2.day + 1, 46) + '</span></button>'; }).join('') + '</nav>',
-      { slot: (el) => put(+el.dataset.k) });
+  // importar la partida en la ranura elegida (si no se indica, en una libre)
+  MGR.importSave = function (st, slot) {
+    const k = slot || [1, 2, 3].find((x) => !LG.slotInfo(x)) || 1;
+    if (!LG.save(st, k)) { UI.toast('No se ha podido guardar: el almacenamiento del navegador está lleno o bloqueado.'); return; }
+    UI.toast('Partida importada en la ranura ' + k + '.'); MGR.start();
   };
 
   // ---------- nueva partida: elegir club
