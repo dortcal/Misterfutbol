@@ -172,6 +172,7 @@
       '</nav>' +
       '<div class="foot"><button class="btn alt" data-act="sound">' + (A.on ? '♪ SONIDO: SÍ' : '♪ SONIDO: NO') + '</button>' + (UI.canInstall ? '<button class="btn alt" data-act="install">Instalar app</button>' : '') + '</div>' +
       '<div class="credit">Diseñado por <b>David OZC</b></div>' +
+      UI.licenseHTML() +
       '<p class="muted center" style="max-width:640px;margin:0">Juego independiente hecho por aficionados. Escudos y equipaciones generados por el juego; nombres de clubes y jugadores usados solo para identificarlos. Plantillas a octubre de 2026.</p>',
       {
         friendly: () => UI.friendly(),
@@ -181,6 +182,13 @@
         help: () => UI.help(),
         install: () => { if (UI.installEvt) { UI.installEvt.prompt(); UI.installEvt = null; UI.canInstall = false; } },
       });
+  };
+
+  // bloque de licencia (Creative Commons BY-NC-ND) con el botón oficial y el enlace al texto legal
+  UI.licenseHTML = function () {
+    const cc = MF.CC; if (!cc) return '';
+    return '<div class="cc-box"><a href="' + cc.url + '" target="_blank" rel="license noopener" class="cc-badge" title="' + esc(cc.name) + '"><img src="' + cc.img + '" width="120" height="42" alt="Licencia ' + esc(cc.name) + '"></a>' +
+      '<p><b>Míster Fútbol 26·27</b> · © David 2026<br>Uso gratuito para fines lúdicos.<br><a href="' + cc.url + '" target="_blank" rel="license noopener">Obra bajo licencia CC BY-NC-ND 4.0</a>: reconocimiento, sin uso comercial y sin obra derivada.</p></div>';
   };
 
   UI.baseWorld = function () { if (!UI._world) UI._world = DB.makeWorld(); return UI._world; };

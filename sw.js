@@ -1,8 +1,8 @@
 /* Service worker: permite jugar sin conexión una vez cargado el juego.
    Estrategia "red primero" para recibir siempre las actualizaciones publicadas en GitHub Pages. */
-const CACHE = 'mister-futbol-v43';
+const CACHE = 'mister-futbol-v44';
 const FILES = ['./', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/data/teams.js', 'js/data/players.js', 'js/data/world.js', 'js/data/youth.js', 'js/util.js', 'js/achievements.js', 'js/db.js', 'js/sim.js', 'js/match.js', 'js/league.js', 'js/europe.js',
+  'js/data/teams.js', 'js/data/players.js', 'js/data/world.js', 'js/data/youth.js', 'js/util.js', 'js/cc.js', 'js/achievements.js', 'js/db.js', 'js/sim.js', 'js/match.js', 'js/league.js', 'js/europe.js',
   'js/graphics.js', 'js/render.js', 'js/audio.js', 'js/ui.js', 'js/matchui.js', 'js/manager.js', 'js/main.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

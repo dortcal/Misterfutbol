@@ -468,3 +468,11 @@ table.tbl.sq th, table.tbl.sq td { padding-left: 5px; padding-right: 5px; }
 .mini-tbl.click { cursor: pointer; }
 .mini-tbl.click:hover h3 { color: var(--gold, #b8860b); }
 table.tbl.sq .fit { width: 34px; }
+
+/* Licencia Creative Commons al pie del menú principal */
+.cc-box { display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 640px; margin: 8px auto 0; padding: 10px 12px; background: rgba(255,255,255,.35); border: 1px solid rgba(0,0,0,.18); text-align: left; }
+.cc-box .cc-badge { flex: none; line-height: 0; }
+.cc-box img { display: block; width: 120px; height: 42px; }
+.cc-box p { margin: 0; font-size: 13px; line-height: 1.4; color: #2b2f33; }
+.cc-box a { color: #1c4f8c; }
+@media (max-width: 480px) { .cc-box { flex-direction: column; text-align: center; } }
