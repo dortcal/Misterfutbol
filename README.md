@@ -172,4 +172,4 @@ js/ui.js, matchui.js, manager.js, main.js   pantallas
 - Proyecto de aficionados sin relación con LaLiga, la RFEF ni los clubes.
 - **Licencia de la obra**: en el menú principal aparece el botón oficial de Creative Commons (variante con euro, de `github.com/creativecommons/vocabulary`) con el texto «© David 2026 · Uso gratuito para fines lúdicos» y el enlace a la licencia **CC BY-NC-ND 4.0** (reconocimiento, sin uso comercial, sin obra derivada). El icono está incrustado en `js/cc.js` para que funcione sin conexión y en el artefacto de un solo archivo.
 
-Código bajo licencia MIT (ver `LICENSE`).
+Obra bajo licencia **Creative Commons Reconocimiento-NoComercial-SinObraDerivada 4.0 (CC BY-NC-ND 4.0)**, © David 2026. Uso gratuito para fines lúdicos (ver `LICENSE`). Las versiones anteriores se distribuyeron con licencia MIT.
