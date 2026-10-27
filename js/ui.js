@@ -173,7 +173,7 @@
       '<div class="foot"><button class="btn alt" data-act="sound">' + (A.on ? '♪ SONIDO: SÍ' : '♪ SONIDO: NO') + '</button>' + (UI.canInstall ? '<button class="btn alt" data-act="install">Instalar app</button>' : '') + '</div>' +
       '<div class="credit">Diseñado por <b>David OZC</b></div>' +
       UI.licenseHTML() +
-      '<p class="muted center" style="max-width:640px;margin:0">Juego independiente hecho por aficionados. Escudos y equipaciones generados por el juego; nombres de clubes y jugadores usados solo para identificarlos. Plantillas a octubre de 2026.</p>',
+      '<p class="muted center" style="max-width:640px;margin:0">Juego independiente hecho por aficionados, sin relación con LaLiga, la RFEF, los clubes ni los jugadores, y sin su patrocinio ni aprobación. Escudos y equipaciones generados por el juego; los nombres de clubes y jugadores se usan solo para identificarlos. Las medias, atributos, estadísticas y sucesos son estimaciones y simulaciones ficticias que no reflejan el rendimiento ni la conducta de los jugadores reales. Plantillas a octubre de 2026.</p>',
       {
         friendly: () => UI.friendly(),
         manager: () => MF.MGR.start(),
